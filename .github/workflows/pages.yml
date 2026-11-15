@@ -39,6 +39,39 @@ jobs:
           cp docs/images/icon-512.png _site/icon-512.png
           cp docs/images/icon-32.png _site/favicon.ico
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build Static Studio
+        run: |
+          cd web
+          npm ci
+          npm run build:static
+          mkdir -p ../_site/studio
+          cp -r dist-static/. ../_site/studio/
+          mv ../_site/studio/studio.html ../_site/studio/index.html
+
+      - name: Add studio link to showcase
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          page = Path('_site/index.html')
+          html = page.read_text(encoding='utf-8')
+          badge = (
+              '<a href="./studio/" id="jc-studio-entry" '
+              'style="position:fixed;right:24px;bottom:24px;z-index:9999;'
+              'padding:10px 16px;border-radius:999px;background:#1c1f26;color:#eef0f5;'
+              'font:14px system-ui;text-decoration:none;box-shadow:0 4px 16px rgba(0,0,0,.25)">'
+              '在线编辑 →</a>'
+          )
+          page.write_text(html.replace('</body>', badge + '\n</body>'), encoding='utf-8')
+          PY
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

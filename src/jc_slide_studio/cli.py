@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import sys
 import webbrowser
@@ -159,15 +160,24 @@ def serve(port: int, host: str, no_browser: bool) -> None:
     Set ``JC_STUDIO_DB`` or ``JC_STUDIO_DATA_DIR`` to move the database.
     """
     import uvicorn
-    from jc_slide_studio.studio.db import db_path
 
     state.source_path = None
     url = f"http://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}/"
     click.echo(f"Deck library on {url}")
-    click.echo(f"Database: {db_path()}")
+    if os.environ.get("JC_STUDIO_BACKEND") == "cloudbase_pg":
+        click.echo("Database: CloudBase PostgreSQL (HTTPS SQL)")
+    else:
+        from jc_slide_studio.studio.db import db_path
+        click.echo(f"Database: {db_path()}")
     if not no_browser:
         webbrowser.open(url)
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    # Behind CloudBase Run's gateway the connection comes from a proxy IP, not
+    # 127.0.0.1. Trust its X-Forwarded-Proto so request.url.scheme is https and
+    # the session cookie is emitted with the Secure flag.
+    uvicorn.run(
+        app, host=host, port=port, log_level="warning",
+        proxy_headers=True, forwarded_allow_ips="*",
+    )
 
 
 if __name__ == "__main__":

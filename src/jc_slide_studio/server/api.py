@@ -9,6 +9,7 @@ touching the editor kernel.
 from __future__ import annotations
 
 from html import escape
+import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -18,7 +19,11 @@ from pydantic import BaseModel
 from jc_slide_studio.document.parser import build_document_ast
 from jc_slide_studio.render.engine import render_text
 from jc_slide_studio.server.preview_scripts import CLICK_MAP_SCRIPT, EMBEDDED_STYLE
-from jc_slide_studio.studio import service
+# Local runs keep SQLite; CloudRun switches to the CloudBase PG HTTP backend.
+if os.environ.get("JC_STUDIO_BACKEND") == "cloudbase_pg":
+    from jc_slide_studio.studio import service_pg as service
+else:
+    from jc_slide_studio.studio import service
 
 router = APIRouter(prefix="/api")
 

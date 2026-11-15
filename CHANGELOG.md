@@ -4,6 +4,9 @@ All notable changes to `jc-slide-studio` will be documented in this file.
 
 ## [Unreleased]
 
+- 新增形态 A（GitHub Pages 静态试用站）：浏览器内通过 Pyodide 运行同一套 Python 渲染引擎，可编辑 Markdown、实时预览、导入/导出，无需登录与后端；运行时随站点打包，不依赖外部 CDN。
+- 新增形态 B 部署物料：`docs/ops/` 下 Dockerfile、systemd unit、nginx 模板与[自建服务部署 Runbook](docs/ops/deploy_service_runbook.md)；业务代码零改动。
+- 新增 `tests/test_static_studio.py`：验证打包引擎与 CLI 输出逐字节等价、浏览器内可真实渲染（`JC_TEST_STATIC=1` 启用浏览器用例）。
 - 重排工作台的文档操作、大纲和成片控制，并新增 Markdown 实时编辑、页面设置控件和可折叠容器。见 [编辑器规范](docs/editor-spec.md)。
 
 ## [0.1.0] - 2026-11-15

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:static": "node scripts/pack-engine.mjs && vite build --config vite.static.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^4.2.1",
+    "pyodide": "^314.0.8",
     "typescript": "^5.2.2",
     "vite": "^5.1.6"
   }
