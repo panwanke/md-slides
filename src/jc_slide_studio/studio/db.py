@@ -71,7 +71,12 @@ def now() -> str:
 
 def data_dir() -> Path:
     override = os.environ.get("JC_STUDIO_DATA_DIR")
-    path = Path(override).expanduser() if override else Path.home() / ".jc-slide-studio"
+    if override:
+        path = Path(override).expanduser()
+    elif os.environ.get("JC_STUDIO_DB"):
+        path = Path(os.environ["JC_STUDIO_DB"]).expanduser().resolve().parent
+    else:
+        path = Path.home() / ".jc-slide-studio"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

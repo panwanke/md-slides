@@ -62,7 +62,10 @@ def create_user(email: str, password: str, display_name: str | None = None) -> D
     )
     if row is None:
         raise ValueError("该邮箱已注册")
-    return _public_user(row)
+    user = _public_user(row)
+    from jc_slide_studio.studio.starter_deck import SHOWCASE_TITLE, SHOWCASE_CONTENT
+    create_deck(user["id"], SHOWCASE_TITLE, SHOWCASE_CONTENT)
+    return user
 
 
 def authenticate(email: str, password: str) -> Optional[Dict[str, Any]]:

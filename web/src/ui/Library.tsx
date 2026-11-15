@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  FileText, FolderOpen, LogOut, Pencil, Plus, Presentation, Search,
-  Trash2, Upload, X,
+  FileText, FolderOpen, FolderUp, GraduationCap, LogOut, Pencil, Plus, Presentation,
+  Rocket, Search, Sparkles, Trash2, Upload, X,
 } from 'lucide-react';
 import { deckApi } from '../store/remote';
 import type { DeckMeta, RevisionMeta } from '../store/remote';
@@ -11,6 +11,46 @@ function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN');
 }
+
+const TEMPLATE_OPTIONS = [
+  {
+    id: 'academic',
+    title: '学术研究与组会',
+    desc: '包含背景、实验、方法卡片与讨论分析的结构化汇报',
+    defaultTitle: '学术研究与成果汇报',
+    Icon: GraduationCap,
+  },
+  {
+    id: 'showcase',
+    title: '官方功能全景演示',
+    desc: '包含双栏排版、LaTeX 数学公式、分步动效与目录导览',
+    defaultTitle: '从极简书写到交互成片',
+    Icon: Sparkles,
+  },
+  {
+    id: 'pitch',
+    title: '产品方案与商业 Pitch',
+    desc: '用户痛点、核心价值、竞争壁垒与业务路线图',
+    defaultTitle: '新产品架构与商业提案',
+    Icon: Rocket,
+  },
+  {
+    id: 'blank',
+    title: '空白演示稿',
+    desc: '纯净的初始画布，包含封面和基础分栏标记',
+    defaultTitle: '未命名演示稿',
+    Icon: FileText,
+  },
+];
+
+const THEME_OPTIONS = [
+  { id: 'academic-paper', label: '学术经典' },
+  { id: 'minimal-white', label: '纯白极简' },
+  { id: 'sunset-warm', label: '暖阳夕落' },
+  { id: 'catppuccin-mocha', label: '暗夜摩卡' },
+  { id: 'editorial-serif', label: '典雅衬线' },
+  { id: 'nord', label: '北欧极光' },
+];
 
 export default function Library({
   user, onSignOut,
@@ -27,12 +67,15 @@ export default function Library({
 
   // Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [newDeckTitle, setNewDeckTitle] = useState('未命名演示稿');
+  const [selectedTemplate, setSelectedTemplate] = useState('academic');
+  const [selectedTheme, setSelectedTheme] = useState('academic-paper');
+  const [newDeckTitle, setNewDeckTitle] = useState('学术研究与成果汇报');
   const [renameModalDeck, setRenameModalDeck] = useState<DeckMeta | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<DeckMeta | null>(null);
 
   const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     try {
@@ -75,9 +118,16 @@ export default function Library({
   }
 
   function openCreate() {
-    setNewDeckTitle('未命名演示稿');
+    setSelectedTemplate('academic');
+    setSelectedTheme('academic-paper');
+    setNewDeckTitle('学术研究与成果汇报');
     setError('');
     setCreateModalOpen(true);
+  }
+
+  function chooseTemplate(tpl: typeof TEMPLATE_OPTIONS[0]) {
+    setSelectedTemplate(tpl.id);
+    setNewDeckTitle(tpl.defaultTitle);
   }
 
   async function handleCreate(e?: React.FormEvent) {
@@ -86,7 +136,7 @@ export default function Library({
     setBusy(true);
     setError('');
     try {
-      const res = await deckApi.create(title);
+      const res = await deckApi.create(title, selectedTemplate);
       setCreateModalOpen(false);
       // Immediately open and edit the newly created deck
       location.hash = `#/deck/${res.deck.id}`;
@@ -158,6 +208,55 @@ export default function Library({
     if (fileInput.current) fileInput.current.value = '';
   }
 
+  async function importFolder(list: FileList | null) {
+    if (!list?.length) return;
+    setBusy(true);
+    setError('');
+    try {
+      const files = Array.from(list);
+      const mdFiles = files.filter((f) => /\.(md|markdown|txt)$/i.test(f.name));
+      const imageFiles = files.filter((f) => /\.(png|jpg|jpeg|gif|svg|webp|bmp|ico)$/i.test(f.name));
+
+      if (!mdFiles.length) {
+        setError('选中的文件夹内未找到 .md 演示稿文件');
+        return;
+      }
+
+      // 1. 导入 Markdown 文件
+      const mdPayloads = await Promise.all(
+        mdFiles.map(async (file) => ({ name: file.name, content: await file.text() })),
+      );
+      const res = await deckApi.importFiles(mdPayloads);
+
+      // 2. 如果包含图片文件，批量上传到生成的演示稿资产库中
+      if (imageFiles.length && res.decks.length) {
+        for (const deck of res.decks) {
+          const formData = new FormData();
+          for (const img of imageFiles) {
+            const relPath = (img as unknown as { webkitRelativePath?: string }).webkitRelativePath
+              ? (img as unknown as { webkitRelativePath: string }).webkitRelativePath.split('/').slice(1).join('/')
+              : img.name;
+            formData.append('files', img, relPath || img.name);
+          }
+          try {
+            await deckApi.uploadAssets(deck.id, formData);
+          } catch { /* ignore individual asset failure */ }
+        }
+      }
+
+      await refresh();
+      if (folderInput.current) folderInput.current.value = '';
+
+      if (res.decks.length === 1) {
+        location.hash = `#/deck/${res.decks[0].id}`;
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '文件夹导入失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function showRevisions(deck: DeckMeta) {
     try {
       const data = await deckApi.revisions(deck.id);
@@ -191,9 +290,16 @@ export default function Library({
           <div className="library-actions">
             <input ref={fileInput} type="file" multiple accept=".md,.markdown,.txt"
               hidden onChange={(e) => void importFiles(e.target.files)} />
+            <input ref={folderInput} type="file" multiple
+              {...({ webkitdirectory: '', directory: '' } as unknown as object)}
+              hidden onChange={(e) => void importFolder(e.target.files)} />
             <button type="button" className="button" disabled={busy}
-              onClick={() => fileInput.current?.click()}>
-              <Upload size={16} /> 导入本地 .md
+              onClick={() => fileInput.current?.click()} title="导入单个或多个 .md 文件">
+              <Upload size={16} /> 导入 .md
+            </button>
+            <button type="button" className="button" disabled={busy}
+              onClick={() => folderInput.current?.click()} title="导入包含 .md 与本地图片的文件夹">
+              <FolderUp size={16} /> 导入文件夹 (含图片)
             </button>
             <button type="button" className="button library-primary" disabled={busy} onClick={openCreate}>
               <Plus size={16} /> 新建演示稿
@@ -219,7 +325,10 @@ export default function Library({
                     <Plus size={16} /> 新建演示稿
                   </button>
                   <button type="button" className="button" onClick={() => fileInput.current?.click()} disabled={busy}>
-                    <Upload size={16} /> 导入本地 .md
+                    <Upload size={16} /> 导入 .md
+                  </button>
+                  <button type="button" className="button" onClick={() => folderInput.current?.click()} disabled={busy}>
+                    <FolderUp size={16} /> 导入文件夹 (含图片)
                   </button>
                 </div>
               )}
@@ -252,16 +361,47 @@ export default function Library({
       {/* 新建演示稿 Modal */}
       {createModalOpen && (
         <div className="dialog-overlay" onClick={() => setCreateModalOpen(false)}>
-          <div className="dialog-panel" onClick={(e) => e.stopPropagation()}>
+          <div className="dialog-panel dialog-panel-lg" onClick={(e) => e.stopPropagation()}>
             <header>
-              <h2><Presentation size={18} /> 新建演示稿</h2>
+              <h2><Presentation size={19} /> 新建演示稿</h2>
               <button type="button" aria-label="关闭" onClick={() => setCreateModalOpen(false)}>
                 <X size={16} />
               </button>
             </header>
+            <p className="dialog-subtitle">
+              选择适合场景的模板框架，或直接以空白页开始，快速进入 Markdown 实时编辑工作台。
+            </p>
             <form onSubmit={handleCreate}>
               <div className="dialog-body">
-                <div className="dialog-field">
+                <div>
+                  <div className="template-section-label">
+                    <Sparkles size={14} /> 预设模版
+                  </div>
+                  <div className="template-grid">
+                    {TEMPLATE_OPTIONS.map((tpl) => {
+                      const Icon = tpl.Icon;
+                      const active = selectedTemplate === tpl.id;
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          className="template-card"
+                          data-template={tpl.id}
+                          data-active={active}
+                          onClick={() => chooseTemplate(tpl)}
+                        >
+                          <div className="template-card-header">
+                            <Icon size={16} />
+                            <span>{tpl.title}</span>
+                          </div>
+                          <span className="template-card-desc">{tpl.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="dialog-field" style={{ marginTop: '4px' }}>
                   <label htmlFor="createDeckTitleInput">演示稿标题</label>
                   <input
                     id="createDeckTitleInput"
@@ -276,6 +416,24 @@ export default function Library({
                     required
                   />
                 </div>
+
+                <div className="dialog-field">
+                  <label>放映主题风格</label>
+                  <div className="theme-chips">
+                    {THEME_OPTIONS.map((th) => (
+                      <button
+                        key={th.id}
+                        type="button"
+                        className="theme-chip"
+                        data-active={selectedTheme === th.id}
+                        onClick={() => setSelectedTheme(th.id)}
+                      >
+                        {th.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {error && <p className="dialog-error" role="alert">{error}</p>}
               </div>
               <div className="dialog-actions">

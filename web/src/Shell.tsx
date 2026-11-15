@@ -87,6 +87,7 @@ export default function Shell() {
     return (
       <Workbench
         key={deckId}
+        deckId={deckId}
         store={store}
         previewUrl={`/api/decks/${deckId}/preview`}
         presentUrl={`/api/decks/${deckId}/preview?embedded=0`}

@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
 import {
-  ArrowUpRight, ChevronsUpDown, ChevronDown, ChevronLeft, ChevronRight, Code2, Columns,
-  FileText, Film, List, Monitor, PanelTop, Plus, Presentation, Save, StickyNote,
+  ArrowUpRight, Check, ChevronsUpDown, ChevronDown, ChevronLeft, ChevronRight, Code2, Columns,
+  Copy, FileText, Film, FolderUp, Image as ImageIcon, List, Monitor, PanelTop, Plus, Presentation, Save,
+  StickyNote, Trash2, Upload, X,
 } from 'lucide-react';
 import { EditorSession } from './editorSession';
 import type { Deck, Mode, PreviewClick, SaveStatus, SlideSummary } from './editorSession';
 import { layouts } from './slideSyntax';
 import { LocalFileStore } from './store/localFile';
+import { deckApi } from './store/remote';
+import type { DeckAsset } from './store/remote';
 import type { DeckStore } from './store/types';
 import './workbench.css';
 
 interface WorkbenchProps {
   /** Storage implementation. Omitted in local-file mode. */
   store?: DeckStore;
+  deckId?: number;
   /** iframe source for the embedded preview. */
   previewUrl?: string;
   /** Full-screen presentation URL (without the `#/page` fragment). */
@@ -115,6 +119,7 @@ function PreviewControls({
 
 export default function App({
   store,
+  deckId,
   previewUrl = '/preview/workbench',
   presentUrl = '/preview/live',
   onExit,
@@ -134,6 +139,14 @@ export default function App({
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [previewRevision, setPreviewRevision] = useState(0);
   const [scale, setScale] = useState(0);
+
+  // Asset management states
+  const [assetsOpen, setAssetsOpen] = useState(false);
+  const [assetsList, setAssetsList] = useState<DeckAsset[]>([]);
+  const [assetUploading, setAssetUploading] = useState(false);
+  const [copiedPath, setCopiedPath] = useState('');
+  const assetFileInput = useRef<HTMLInputElement>(null);
+  const assetFolderInput = useRef<HTMLInputElement>(null);
 
   const session = useRef<EditorSession>();
   const host = useRef<HTMLDivElement>(null);
@@ -207,17 +220,98 @@ export default function App({
       if (event.source !== frame.current?.contentWindow || event.origin !== location.origin) return;
       if (event.data?.type === 'ELEMENT_CLICKED') editor.revealElement(event.data);
     }
+    function onPaste(event: ClipboardEvent) {
+      if (!deckId) return;
+      const files = event.clipboardData?.files;
+      if (!files?.length) return;
+      const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+      if (!imageFiles.length) return;
+      event.preventDefault();
+      const formData = new FormData();
+      for (const img of imageFiles) {
+        const ext = img.type.split('/')[1] || 'png';
+        const filename = `images/pasted-${Date.now()}.${ext}`;
+        formData.append('files', img, filename);
+      }
+      void deckApi.uploadAssets(deckId, formData).then((res) => {
+        for (const item of res.saved) {
+          session.current?.insertText(`\n![图片](${item.path})\n`);
+        }
+      });
+    }
+
+    window.addEventListener('paste', onPaste);
     window.addEventListener('keydown', saveShortcut);
     window.addEventListener('message', onPreviewMessage);
     return () => {
       disposed = true;
       window.clearTimeout(reconnect);
       socket?.close();
+      window.removeEventListener('paste', onPaste);
       window.removeEventListener('keydown', saveShortcut);
       window.removeEventListener('message', onPreviewMessage);
       editor.destroy();
     };
-  }, []);
+  }, [deckId]);
+
+  async function loadAssets() {
+    if (!deckId) return;
+    try {
+      const res = await deckApi.listAssets(deckId);
+      setAssetsList(res.assets);
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    if (assetsOpen && deckId) {
+      void loadAssets();
+    }
+  }, [assetsOpen, deckId]);
+
+  async function handleAssetUpload(list: FileList | null) {
+    if (!list?.length || !deckId) return;
+    setAssetUploading(true);
+    try {
+      const formData = new FormData();
+      for (const f of Array.from(list)) {
+        const rel = (f as unknown as { webkitRelativePath?: string }).webkitRelativePath
+          ? (f as unknown as { webkitRelativePath: string }).webkitRelativePath.split('/').slice(1).join('/')
+          : f.name;
+        formData.append('files', f, rel || f.name);
+      }
+      await deckApi.uploadAssets(deckId, formData);
+      await loadAssets();
+      if (assetFileInput.current) assetFileInput.current.value = '';
+      if (assetFolderInput.current) assetFolderInput.current.value = '';
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '上传失败');
+    } finally {
+      setAssetUploading(false);
+    }
+  }
+
+  async function handleAssetDelete(assetPath: string) {
+    if (!deckId) return;
+    if (!confirm(`确认删除「${assetPath}」？`)) return;
+    try {
+      await deckApi.deleteAsset(deckId, assetPath);
+      await loadAssets();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '删除失败');
+    }
+  }
+
+  function insertAssetSnippet(path: string) {
+    session.current?.insertText(`\n![图片](${path})\n`);
+    setAssetsOpen(false);
+  }
+
+  function copyAssetSnippet(path: string) {
+    const text = `![图片](${path})`;
+    void navigator.clipboard.writeText(text);
+    setCopiedPath(path);
+    window.setTimeout(() => setCopiedPath(''), 1800);
+  }
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
@@ -362,6 +456,16 @@ export default function App({
             disabled={!file || status === 'saving'} onClick={() => void session.current?.save()}>
             <Save size={16} /><span>保存</span>
           </button>
+          {deckId && (
+            <button
+              type="button"
+              className="button"
+              onClick={() => setAssetsOpen(true)}
+              title="管理幻灯片图片附件与批量上传"
+            >
+              <ImageIcon size={16} /><span>图片</span>
+            </button>
+          )}
           <a className="button present-button" href={`${presentUrl}#/${activePage}`} target="_blank" rel="noreferrer">
             <Monitor size={16} /><span>演示</span><ArrowUpRight className="external-icon" size={13} />
           </a>
@@ -511,6 +615,110 @@ export default function App({
             onToggle={toggleStepped} onStep={jumpStep} onNavigate={navigate} />
         </section>
       </main>
+
+      {/* 图片资源管理器 Modal */}
+      {assetsOpen && (
+        <div className="assets-modal-overlay" onClick={() => setAssetsOpen(false)}>
+          <div className="assets-modal-panel" onClick={(e) => e.stopPropagation()}>
+            <header className="assets-modal-header">
+              <h2><ImageIcon size={19} /> 图片与附件资源库</h2>
+              <button type="button" aria-label="关闭" onClick={() => setAssetsOpen(false)}>
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="assets-toolbar">
+              <input
+                ref={assetFileInput}
+                type="file"
+                multiple
+                accept="image/*"
+                hidden
+                onChange={(e) => void handleAssetUpload(e.target.files)}
+              />
+              <input
+                ref={assetFolderInput}
+                type="file"
+                multiple
+                {...({ webkitdirectory: '', directory: '' } as unknown as object)}
+                hidden
+                onChange={(e) => void handleAssetUpload(e.target.files)}
+              />
+              <button
+                type="button"
+                className="button library-primary"
+                disabled={assetUploading}
+                onClick={() => assetFileInput.current?.click()}
+              >
+                <Upload size={15} /> 上传图片
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={assetUploading}
+                onClick={() => assetFolderInput.current?.click()}
+                title="选择本地包含多张图片的文件夹进行批量上传"
+              >
+                <FolderUp size={15} /> 上传图片文件夹
+              </button>
+              <span style={{ fontSize: '12px', color: 'var(--muted)', marginLeft: 'auto' }}>
+                在编辑区粘贴截图 (Ctrl+V) 自动上传并插入
+              </span>
+            </div>
+
+            <div className="assets-grid">
+              {assetsList.length === 0 ? (
+                <div className="asset-empty">
+                  <ImageIcon size={32} strokeWidth={1.5} />
+                  <span>当前演示稿暂无上传的图片资源</span>
+                  <span style={{ fontSize: '11.5px', color: 'var(--subtle)' }}>
+                    点击上方按钮上传单张或整个文件夹图片，或在编辑区直接粘贴截图
+                  </span>
+                </div>
+              ) : (
+                assetsList.map((asset) => (
+                  <div key={asset.path} className="asset-card">
+                    <div className="asset-thumb-box" onClick={() => insertAssetSnippet(asset.path)} title="点击插入到文档">
+                      <img src={asset.url} alt={asset.name} loading="lazy" />
+                    </div>
+                    <div className="asset-info">
+                      <span className="asset-name" title={asset.name}>{asset.name}</span>
+                      <span className="asset-path" title={asset.path}>{asset.path}</span>
+                      <div className="asset-actions">
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => insertAssetSnippet(asset.path)}
+                          title="在光标处插入 Markdown"
+                        >
+                          插入
+                        </button>
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => copyAssetSnippet(asset.path)}
+                          title="复制 Markdown 引用格式"
+                        >
+                          {copiedPath === asset.path ? <Check size={12} /> : <Copy size={12} />}
+                        </button>
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => void handleAssetDelete(asset.path)}
+                          title="删除图片"
+                          style={{ marginLeft: 'auto', color: 'var(--accent-ink)' }}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

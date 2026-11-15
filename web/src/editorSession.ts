@@ -323,4 +323,17 @@ export class EditorSession {
     });
     view.focus();
   }
+
+  insertText(text: string) {
+    const view = this.view;
+    if (!view) return;
+    const { selection } = view.state;
+    view.dispatch({
+      changes: { from: selection.main.from, to: selection.main.to, insert: text },
+      selection: { anchor: selection.main.from + text.length },
+      scrollIntoView: true,
+      userEvent: 'input',
+    });
+    view.focus();
+  }
 }

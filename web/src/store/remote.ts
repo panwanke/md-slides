@@ -77,6 +77,21 @@ export class RemoteDeckStore implements DeckStore {
   }
 }
 
+export interface DeckTemplate {
+  id: string;
+  title: string;
+  description: string;
+  content: string;
+}
+
+export interface DeckAsset {
+  name: string;
+  path: string;
+  size: number;
+  mimeType: string;
+  url: string;
+}
+
 function json(method: string, body: unknown): RequestInit {
   return {
     method,
@@ -88,8 +103,10 @@ function json(method: string, body: unknown): RequestInit {
 export const deckApi = {
   list: () => request<{ ok: boolean; decks: DeckMeta[] }>('/api/decks'),
 
-  create: (title: string) =>
-    request<{ ok: boolean; deck: DeckMeta }>('/api/decks', json('POST', { title })),
+  templates: () => request<{ ok: boolean; templates: DeckTemplate[] }>('/api/templates'),
+
+  create: (title: string, template?: string, content?: string) =>
+    request<{ ok: boolean; deck: DeckMeta }>('/api/decks', json('POST', { title, template, content })),
 
   rename: (id: number, title: string) =>
     request<{ ok: boolean; deck: DeckMeta }>(`/api/decks/${id}`, json('PATCH', { title })),
@@ -104,4 +121,20 @@ export const deckApi = {
 
   revisions: (id: number) =>
     request<{ ok: boolean; revisions: RevisionMeta[] }>(`/api/decks/${id}/revisions`),
+
+  listAssets: (deckId: number) =>
+    request<{ ok: boolean; assets: DeckAsset[] }>(`/api/decks/${deckId}/assets`),
+
+  uploadAssets: async (deckId: number, formData: FormData) => {
+    const res = await fetch(`/api/decks/${deckId}/assets`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    });
+    if (!res.ok) throw new Error(`上传失败 (${res.status})`);
+    return res.json() as Promise<{ ok: boolean; saved: { path: string; url: string; size: number }[] }>;
+  },
+
+  deleteAsset: (deckId: number, assetPath: string) =>
+    request<{ ok: boolean }>(`/api/decks/${deckId}/assets/${assetPath}`, { method: 'DELETE' }),
 };

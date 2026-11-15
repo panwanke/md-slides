@@ -61,13 +61,18 @@ def test_signup_validation(client):
 
 def test_deck_crud_save_and_readback(client):
     signup(client, "owner@example.com")
+    initial_decks = client.get("/api/decks").json()["decks"]
+    assert len(initial_decks) == 1
+    assert "演示全景" in initial_decks[0]["title"]
+    starter_id = initial_decks[0]["id"]
+
     created = client.post("/api/decks", json={"title": "组会汇报"}).json()["deck"]
     deck_id = created["id"]
     assert created["revision"] == 1
     assert created["slideCount"] >= 1
 
     listed = client.get("/api/decks").json()["decks"]
-    assert [item["id"] for item in listed] == [deck_id]
+    assert [item["id"] for item in listed] == [deck_id, starter_id]
 
     loaded = client.get(f"/api/decks/{deck_id}").json()
     assert loaded["source"] == "组会汇报"
@@ -93,7 +98,7 @@ def test_deck_crud_save_and_readback(client):
     assert renamed.json()["deck"]["title"] == "组会汇报 v2"
 
     assert client.delete(f"/api/decks/{deck_id}").json()["ok"] is True
-    assert client.get("/api/decks").json()["decks"] == []
+    assert [item["id"] for item in client.get("/api/decks").json()["decks"]] == [starter_id]
 
 
 def test_optimistic_lock_rejects_stale_write(client):
@@ -120,7 +125,9 @@ def test_owner_isolation(client):
 
     other = TestClient(app)
     signup(other, "bob@example.com")
-    assert other.get("/api/decks").json()["decks"] == []
+    bob_decks = other.get("/api/decks").json()["decks"]
+    assert len(bob_decks) == 1
+    assert deck_id not in [item["id"] for item in bob_decks]
     assert other.get(f"/api/decks/{deck_id}").status_code == 404
     assert other.put(f"/api/decks/{deck_id}", json={
         "content": "# 越权", "baseRevision": 1,
@@ -139,8 +146,11 @@ def test_import_local_markdown(client):
     assert response.json()["count"] == 2
 
     decks = client.get("/api/decks").json()["decks"]
-    assert {item["title"] for item in decks} == {"talk-a", "talk-b"}
-    stored = client.get(f"/api/decks/{decks[0]['id']}").json()
+    titles = {item["title"] for item in decks}
+    assert {"talk-a", "talk-b"}.issubset(titles)
+    assert any("演示全景" in t for t in titles)
+    target = next(item for item in decks if item["title"] == "talk-a")
+    stored = client.get(f"/api/decks/{target['id']}").json()
     assert "正文" in stored["content"]
 
 
@@ -159,3 +169,62 @@ def test_preview_renders_stored_deck(client):
 
 def test_library_mode_has_no_bound_local_file(client):
     assert client.get("/api/doctor").json()["source"] is None
+
+
+def test_templates_api(client):
+    signup(client, "tpl@example.com")
+    res = client.get("/api/templates")
+    assert res.status_code == 200
+    templates = res.json()["templates"]
+    keys = [t["id"] for t in templates]
+    assert "academic" in keys
+    assert "showcase" in keys
+
+    res = client.post("/api/decks", json={"title": "学术汇报", "template": "academic"})
+    assert res.status_code == 201
+    deck = client.get(f"/api/decks/{res.json()['deck']['id']}").json()
+    assert "学术" in deck["content"] or "JOURNAL CLUB" in deck["content"]
+
+
+def test_deck_assets_upload_list_and_delete(client):
+    signup(client, "assets@example.com")
+    deck_id = client.post("/api/decks", json={"title": "带图演示稿"}).json()["deck"]["id"]
+
+    assert client.get(f"/api/decks/{deck_id}/assets").json()["assets"] == []
+
+    files = [
+        ("files", ("figure1.png", b"\x89PNG\r\n\x1a\nfake-data", "image/png")),
+        ("files", ("images/subfig.jpg", b"\xff\xd8\xfffake-jpeg", "image/jpeg")),
+    ]
+    upload_res = client.post(f"/api/decks/{deck_id}/assets", files=files)
+    assert upload_res.status_code == 200
+    saved = [item["path"] for item in upload_res.json()["saved"]]
+    assert len(saved) == 2
+    assert "figure1.png" in saved
+    assert "images/subfig.jpg" in saved
+
+    assets = client.get(f"/api/decks/{deck_id}/assets").json()["assets"]
+    asset_paths = [a["path"] for a in assets]
+    assert "figure1.png" in asset_paths
+    assert "images/subfig.jpg" in asset_paths
+
+    get_res = client.get(f"/api/decks/{deck_id}/assets/figure1.png")
+    assert get_res.status_code == 200
+    assert get_res.content == b"\x89PNG\r\n\x1a\nfake-data"
+
+    preview_res = client.get(f"/api/decks/{deck_id}/preview")
+    assert preview_res.status_code == 200
+    assert f'<base href="/api/decks/{deck_id}/assets/">' in preview_res.text
+
+    bad_upload = client.post(
+        f"/api/decks/{deck_id}/assets",
+        files=[("files", ("../evil.png", b"bad", "image/png"))],
+    )
+    assert bad_upload.status_code == 400
+
+    del_res = client.delete(f"/api/decks/{deck_id}/assets/figure1.png")
+    assert del_res.status_code == 200
+    assert del_res.json()["ok"] is True
+    remaining = [a["path"] for a in client.get(f"/api/decks/{deck_id}/assets").json()["assets"]]
+    assert "figure1.png" not in remaining
+    assert "images/subfig.jpg" in remaining

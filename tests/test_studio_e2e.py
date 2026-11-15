@@ -52,8 +52,10 @@ def test_signup_library_edit_and_reload(library_server):
         page.get_by_role("button", name="创建账号").click()
 
         expect(page.locator(".library")).to_be_visible()
+        expect(page.locator(".deck-card")).to_have_count(1)
         page.get_by_role("button", name="新建演示稿").first.click()
         expect(page.locator(".dialog-panel")).to_be_visible()
+        page.locator('.template-card[data-template="blank"]').click()
         page.locator('input[name="deckTitle"]').fill("E2E 稿件")
         page.get_by_role("button", name="创建并打开").click()
 
@@ -62,7 +64,7 @@ def test_signup_library_edit_and_reload(library_server):
         expect(page.locator("#fileNameDisplay")).to_have_text("E2E 稿件")
 
         frame = page.frame_locator("#previewFrame")
-        expect(frame.locator(".slide.is-active")).to_contain_text("新演示稿")
+        expect(frame.locator(".slide.is-active")).to_contain_text("E2E 稿件")
 
         editor.click()
         page.keyboard.press("Control+A")
@@ -76,7 +78,8 @@ def test_signup_library_edit_and_reload(library_server):
 
         page.get_by_role("button", name="幻灯片库").click()
         expect(page.locator(".library")).to_be_visible()
-        expect(page.locator(".deck-card-meta")).to_contain_text("v2")
+        expect(page.locator(".deck-card")).to_have_count(2)
+        expect(page.locator(".deck-card").filter(has_text="E2E 稿件").locator(".deck-card-meta")).to_contain_text("v2")
 
         assert not errors
         browser.close()
@@ -97,11 +100,19 @@ def test_empty_state_create_rename_and_delete(library_server):
         page.get_by_role("button", name="创建账号").click()
 
         expect(page.locator(".library")).to_be_visible()
+        expect(page.locator(".deck-card strong")).to_contain_text("演示全景")
+
+        # 删除初始示例演示稿以激活空状态
+        page.get_by_role("button", name="删除").click()
+        expect(page.locator(".dialog-panel")).to_be_visible()
+        page.get_by_role("button", name="确认删除").click()
+
         empty_actions = page.locator(".library-empty-actions")
         expect(empty_actions).to_be_visible()
         empty_actions.get_by_role("button", name="新建演示稿").click()
 
         expect(page.locator(".dialog-panel")).to_be_visible()
+        page.locator('.template-card[data-template="blank"]').click()
         page.locator('input[name="deckTitle"]').fill("空状态新建演示稿")
         page.get_by_role("button", name="创建并打开").click()
 
@@ -122,6 +133,7 @@ def test_empty_state_create_rename_and_delete(library_server):
         expect(page.locator(".dialog-panel")).to_be_visible()
         page.get_by_role("button", name="确认删除").click()
         expect(page.locator(".deck-card")).to_have_count(0)
+        expect(page.locator(".library-empty-actions")).to_be_visible()
 
         assert not errors
         browser.close()
