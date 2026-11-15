@@ -177,3 +177,110 @@
 .revision-panel li { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .revision-panel li strong { color: var(--accent-ink); min-width: 42px; }
 .revision-panel li em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--subtle); }
+
+/* ---- Dialog / Modal ---- */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(33, 44, 52, .35);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+.dialog-panel {
+  width: min(440px, 92vw);
+  padding: 24px;
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 20px 40px rgba(33, 44, 52, .18);
+  border: 1px solid var(--line);
+}
+
+.dialog-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.dialog-panel h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-panel header button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog-panel header button:hover {
+  background: var(--sidebar);
+  color: var(--ink);
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dialog-field label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.dialog-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  outline: none;
+  transition: border-color .15s;
+}
+
+.dialog-input:focus {
+  border-color: var(--accent);
+}
+
+.dialog-error {
+  font-size: 12.5px;
+  color: var(--accent-ink);
+  margin: 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.library-empty-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}

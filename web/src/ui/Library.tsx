@@ -24,6 +24,14 @@ export default function Library({
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [revisions, setRevisions] = useState<{ deck: DeckMeta; items: RevisionMeta[] } | null>(null);
+
+  // Modals
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [newDeckTitle, setNewDeckTitle] = useState('未命名演示稿');
+  const [renameModalDeck, setRenameModalDeck] = useState<DeckMeta | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<DeckMeta | null>(null);
+
   const fileInput = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -40,6 +48,19 @@ export default function Library({
 
   useEffect(() => { void refresh(); }, []);
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setCreateModalOpen(false);
+        setRenameModalDeck(null);
+        setDeleteTarget(null);
+        setRevisions(null);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
     setError('');
@@ -53,21 +74,73 @@ export default function Library({
     }
   }
 
-  function create() {
-    const title = window.prompt('新演示稿的标题', '未命名演示稿');
-    if (title === null) return;
-    void run(() => deckApi.create(title.trim() || '未命名演示稿'));
+  function openCreate() {
+    setNewDeckTitle('未命名演示稿');
+    setError('');
+    setCreateModalOpen(true);
   }
 
-  function rename(deck: DeckMeta) {
-    const title = window.prompt('重命名演示稿', deck.title);
-    if (title === null || !title.trim() || title.trim() === deck.title) return;
-    void run(() => deckApi.rename(deck.id, title.trim()));
+  async function handleCreate(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    const title = newDeckTitle.trim() || '未命名演示稿';
+    setBusy(true);
+    setError('');
+    try {
+      const res = await deckApi.create(title);
+      setCreateModalOpen(false);
+      // Immediately open and edit the newly created deck
+      location.hash = `#/deck/${res.deck.id}`;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '创建失败');
+      setBusy(false);
+    }
   }
 
-  function remove(deck: DeckMeta) {
-    if (!window.confirm(`删除「${deck.title}」？\n数据仍保留在数据库中，当前仅从列表移除。`)) return;
-    void run(() => deckApi.remove(deck.id));
+  function openRename(deck: DeckMeta) {
+    setRenameModalDeck(deck);
+    setRenameTitle(deck.title);
+    setError('');
+  }
+
+  async function handleRename(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!renameModalDeck) return;
+    const finalTitle = renameTitle.trim();
+    if (!finalTitle || finalTitle === renameModalDeck.title) {
+      setRenameModalDeck(null);
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await deckApi.rename(renameModalDeck.id, finalTitle);
+      setRenameModalDeck(null);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '重命名失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openDelete(deck: DeckMeta) {
+    setDeleteTarget(deck);
+    setError('');
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setBusy(true);
+    setError('');
+    try {
+      await deckApi.remove(deleteTarget.id);
+      setDeleteTarget(null);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '删除失败');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function importFiles(list: FileList | null) {
@@ -122,7 +195,7 @@ export default function Library({
               onClick={() => fileInput.current?.click()}>
               <Upload size={16} /> 导入本地 .md
             </button>
-            <button type="button" className="button library-primary" disabled={busy} onClick={create}>
+            <button type="button" className="button library-primary" disabled={busy} onClick={openCreate}>
               <Plus size={16} /> 新建演示稿
             </button>
           </div>
@@ -138,8 +211,18 @@ export default function Library({
         {loading ? <p className="library-empty">正在读取…</p>
           : visible.length === 0 ? (
             <div className="library-empty">
-              <FolderOpen size={30} />
+              <FolderOpen size={36} strokeWidth={1.5} />
               <p>{query ? '没有匹配的演示稿' : '还没有演示稿，新建一个或导入本地 .md 文件'}</p>
+              {!query && (
+                <div className="library-empty-actions">
+                  <button type="button" className="button library-primary" onClick={openCreate} disabled={busy}>
+                    <Plus size={16} /> 新建演示稿
+                  </button>
+                  <button type="button" className="button" onClick={() => fileInput.current?.click()} disabled={busy}>
+                    <Upload size={16} /> 导入本地 .md
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <ul className="deck-grid">
@@ -154,11 +237,11 @@ export default function Library({
                   </button>
                   <div className="deck-card-actions">
                     <button type="button" title="重命名" aria-label="重命名"
-                      onClick={() => rename(deck)}><Pencil size={14} /></button>
+                      onClick={() => openRename(deck)}><Pencil size={14} /></button>
                     <button type="button" title="版本历史" aria-label="版本历史"
                       onClick={() => void showRevisions(deck)}>版本</button>
                     <button type="button" title="删除" aria-label="删除"
-                      onClick={() => remove(deck)}><Trash2 size={14} /></button>
+                      onClick={() => openDelete(deck)}><Trash2 size={14} /></button>
                   </div>
                 </li>
               ))}
@@ -166,6 +249,151 @@ export default function Library({
           )}
       </main>
 
+      {/* 新建演示稿 Modal */}
+      {createModalOpen && (
+        <div className="dialog-overlay" onClick={() => setCreateModalOpen(false)}>
+          <div className="dialog-panel" onClick={(e) => e.stopPropagation()}>
+            <header>
+              <h2><Presentation size={18} /> 新建演示稿</h2>
+              <button type="button" aria-label="关闭" onClick={() => setCreateModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </header>
+            <form onSubmit={handleCreate}>
+              <div className="dialog-body">
+                <div className="dialog-field">
+                  <label htmlFor="createDeckTitleInput">演示稿标题</label>
+                  <input
+                    id="createDeckTitleInput"
+                    name="deckTitle"
+                    className="dialog-input"
+                    value={newDeckTitle}
+                    onChange={(e) => setNewDeckTitle(e.target.value)}
+                    placeholder="请输入演示稿标题…"
+                    autoFocus
+                    onFocus={(e) => e.target.select()}
+                    disabled={busy}
+                    required
+                  />
+                </div>
+                {error && <p className="dialog-error" role="alert">{error}</p>}
+              </div>
+              <div className="dialog-actions">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => setCreateModalOpen(false)}
+                  disabled={busy}
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="button library-primary"
+                  disabled={busy}
+                >
+                  <Plus size={16} /> 创建并打开
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 重命名演示稿 Modal */}
+      {renameModalDeck && (
+        <div className="dialog-overlay" onClick={() => setRenameModalDeck(null)}>
+          <div className="dialog-panel" onClick={(e) => e.stopPropagation()}>
+            <header>
+              <h2><Pencil size={18} /> 重命名演示稿</h2>
+              <button type="button" aria-label="关闭" onClick={() => setRenameModalDeck(null)}>
+                <X size={16} />
+              </button>
+            </header>
+            <form onSubmit={handleRename}>
+              <div className="dialog-body">
+                <div className="dialog-field">
+                  <label htmlFor="renameDeckTitleInput">演示稿标题</label>
+                  <input
+                    id="renameDeckTitleInput"
+                    name="deckTitle"
+                    className="dialog-input"
+                    value={renameTitle}
+                    onChange={(e) => setRenameTitle(e.target.value)}
+                    placeholder="请输入演示稿标题…"
+                    autoFocus
+                    onFocus={(e) => e.target.select()}
+                    disabled={busy}
+                    required
+                  />
+                </div>
+                {error && <p className="dialog-error" role="alert">{error}</p>}
+              </div>
+              <div className="dialog-actions">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => setRenameModalDeck(null)}
+                  disabled={busy}
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="button library-primary"
+                  disabled={busy}
+                >
+                  保存
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认 Modal */}
+      {deleteTarget && (
+        <div className="dialog-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="dialog-panel" onClick={(e) => e.stopPropagation()}>
+            <header>
+              <h2>删除演示稿</h2>
+              <button type="button" aria-label="关闭" onClick={() => setDeleteTarget(null)}>
+                <X size={16} />
+              </button>
+            </header>
+            <div className="dialog-body">
+              <p style={{ margin: '8px 0', fontSize: '13.5px', color: 'var(--ink)' }}>
+                确定删除「<strong>{deleteTarget.title}</strong>」？
+              </p>
+              <p className="revision-note" style={{ margin: 0 }}>
+                数据仍保留在数据库中，将从列表视图中移除。
+              </p>
+              {error && <p className="dialog-error" role="alert">{error}</p>}
+            </div>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={busy}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="button"
+                style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}
+                onClick={() => void handleDelete()}
+                disabled={busy}
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 版本历史 Modal */}
       {revisions && (
         <div className="revision-overlay" onClick={() => setRevisions(null)}>
           <div className="revision-panel" onClick={(event) => event.stopPropagation()}>
