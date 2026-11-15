@@ -81,6 +81,7 @@ CSS = """
 
 /* end page */
 .jc-end .jc-body h2{margin-bottom:.6em}
+.jc-math-block{margin:.8em 0;text-align:center;font-size:clamp(18px,1.8vw,26px)}
 .deck-footer{display:flex;justify-content:space-between;width:100%;
   padding:0 64px 20px;font-size:12px;color:var(--text-3);position:absolute;bottom:0;left:0}
 .jc-cover .deck-footer,.jc-section .deck-footer{display:flex}
@@ -102,6 +103,7 @@ HEAD_TEMPLATE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <style>
 {fonts_css}
 {base_css}
@@ -115,6 +117,40 @@ HEAD_TEMPLATE = """<!DOCTYPE html>
 <div class="deck">
 """
 
+KATEX_SCRIPT = """
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script>
+(function() {
+  function tryRender() {
+    if (typeof renderMathInElement === "function") {
+      renderMathInElement(document.body, {
+        delimiters: [
+          {left: "$$", right: "$$", display: true},
+          {left: "$", right: "$", display: false},
+          {left: "\\(", right: "\\)", display: false},
+          {left: "\\[", right: "\\]", display: true}
+        ],
+        ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"],
+        throwOnError: false
+      });
+      return true;
+    }
+    return false;
+  }
+  if (!tryRender()) {
+    var count = 0;
+    var timer = setInterval(function() {
+      count++;
+      if (tryRender() || count > 50) clearInterval(timer);
+    }, 100);
+  }
+  window.addEventListener("load", tryRender);
+  window.addEventListener("hashchange", function() { setTimeout(tryRender, 50); });
+})();
+</script>
+"""
+
 TAIL_TEMPLATE = """
 </div>
 <script>
@@ -122,6 +158,7 @@ TAIL_TEMPLATE = """
 {fx_js}
 {nav_js}
 </script>
+{katex_script}
 {extra_scripts}
 </body>
 </html>
@@ -129,6 +166,15 @@ TAIL_TEMPLATE = """
 
 
 def inline(s: str) -> str:
+    math_tokens: List[str] = []
+
+    def save_math(match: re.Match) -> str:
+        math_tokens.append(match.group(0))
+        return f"\x00MATH_{len(math_tokens)-1}\x00"
+
+    # Protect $$...$$ and $...$ from markdown alterations
+    s = re.sub(r"(\$\$[\s\S]+?\$\$|(?<!\\)\$(?!\s)[^$\n]+?(?<!\s)(?<!\\)\$)", save_math, s)
+
     s = html.escape(s, quote=False)
     s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
     s = re.sub(
@@ -145,6 +191,11 @@ def inline(s: str) -> str:
         return '<a href="%s"%s>%s</a>' % (html.escape(html.unescape(destination), quote=True), attributes, label)
 
     s = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", render_link, s)
+
+    for idx, token in enumerate(math_tokens):
+        escaped_token = html.escape(token, quote=False)
+        s = s.replace(f"\x00MATH_{idx}\x00", escaped_token)
+
     return s
 
 
@@ -185,6 +236,28 @@ def parse_blocks(text: str) -> List[Dict[str, Any]]:
                 raise ValueError(f"Unclosed container: {kind}")
             i += 1
             blocks.append({"type": "container", "kind": kind, "arg": arg, "content": "\n".join(buf)})
+            continue
+
+        if re.match(r"^\+{3,}\s*$", s):
+            i += 1
+            continue
+
+        if s.startswith("$$"):
+            if s.endswith("$$") and len(s) > 2:
+                blocks.append({"type": "math", "text": s[2:-2].strip()})
+                i += 1
+                continue
+            buf = [s[2:].strip()] if len(s) > 2 else []
+            i += 1
+            while i < len(lines) and not lines[i].strip().endswith("$$"):
+                buf.append(lines[i])
+                i += 1
+            if i < len(lines):
+                end_s = lines[i].strip()
+                if len(end_s) > 2:
+                    buf.append(end_s[:-2].strip())
+                i += 1
+            blocks.append({"type": "math", "text": "\n".join(x for x in buf if x)})
             continue
 
         if s.startswith("```"):
@@ -257,8 +330,8 @@ def parse_blocks(text: str) -> List[Dict[str, Any]]:
             st = lines[i].strip()
             if (
                 not st
-                or st.startswith(("#", ">", "|", ":::", "```"))
-                or re.match(r"^(?:[-*+]\s+|\d+\.\s+|!\[)", st)
+                or st.startswith(("#", ">", "|", ":::", "```", "$$"))
+                or re.match(r"^(?:[-*+]\s+|\d+\.\s+|!\[|\+{3,}\s*$)", st)
             ):
                 break
             buf.append(st)
@@ -306,6 +379,8 @@ def render_blocks(blocks: List[Dict[str, Any]], skip_images: bool = False) -> st
                 f"<tr>{''.join(f'<td>{inline(c)}</td>' for c in row)}</tr>" for row in b["rows"]
             )
             out.append(f"<table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table>")
+        elif t == "math":
+            out.append(f'<div class="jc-math-block">$${html.escape(b["text"], quote=False)}$$</div>')
         elif t == "image":
             if skip_images:
                 continue
@@ -425,11 +500,34 @@ def render_layout(layout: str, body: List[Dict[str, Any]], meta: Dict[str, Any],
 
 def render_slide(raw_slide: str, meta: Dict[str, Any], idx: int, total: int, navigation: Any = None) -> Tuple[str, str, Dict[str, str]]:
     smeta, body_text = parse_slide_meta(raw_slide)
-    blocks = parse_blocks(body_text)
-    notes_blocks = [b for b in blocks if b["type"] == "container" and b["kind"] == "notes"]
-    body = [b for b in blocks if not (b["type"] == "container" and b["kind"] == "notes")]
+    has_column_split = bool(re.search(r"^[ \t]*\+{3,}[ \t]*$", body_text, re.M))
+    layout = (smeta.get("layout") or ("two-col" if has_column_split else infer_layout(parse_blocks(body_text)))).lower()
 
-    layout = (smeta.get("layout") or infer_layout(body)).lower()
+    if layout == "two-col" and has_column_split:
+        col_parts = re.split(r"^[ \t]*\+{3,}[ \t]*$", body_text, maxsplit=1, flags=re.M)
+        left_blocks = parse_blocks(col_parts[0])
+        right_blocks = parse_blocks(col_parts[1])
+        all_blocks = left_blocks + right_blocks
+        notes_blocks = [b for b in all_blocks if b["type"] == "container" and b["kind"] == "notes"]
+        left_body = [b for b in left_blocks if not (b["type"] == "container" and b["kind"] == "notes")]
+        right_body = [b for b in right_blocks if not (b["type"] == "container" and b["kind"] == "notes")]
+        body = list(left_body) + list(right_body)
+
+        header_html = ""
+        if left_body and left_body[0]["type"] == "heading":
+            h = left_body.pop(0)
+            lvl = min(6, max(2, h["level"] + 1))
+            header_html = f"<h{lvl}>{inline(h['text'])}</h{lvl}>"
+
+        left_html = render_blocks(left_body)
+        right_html = render_blocks(right_body)
+        inner = f'{header_html}<div class="jc-cols"><div>{left_html}</div><div>{right_html}</div></div>'
+    else:
+        blocks = parse_blocks(body_text)
+        notes_blocks = [b for b in blocks if b["type"] == "container" and b["kind"] == "notes"]
+        body = [b for b in blocks if not (b["type"] == "container" and b["kind"] == "notes")]
+        inner = render_layout(layout, body, meta, navigation, idx)
+
     if layout == "cover":
         title = meta.get("jc", {}).get("title") or meta.get("title") or "Untitled"
     else:
@@ -468,7 +566,6 @@ def render_slide(raw_slide: str, meta: Dict[str, Any], idx: int, total: int, nav
         else ""
     )
 
-    inner = render_layout(layout, body, meta, navigation, idx)
     notes_html = ""
     if notes_blocks:
         inner_html = "".join(render_blocks(parse_blocks(b["content"])) for b in notes_blocks)
@@ -549,6 +646,7 @@ def render_text(
         runtime_js=runtime_js,
         fx_js=fx_js,
         nav_js=nav_js,
+        katex_script=KATEX_SCRIPT,
         extra_scripts=extra_scripts,
     )
 

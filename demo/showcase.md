@@ -1,8 +1,8 @@
 ---
 jc:
-  title: "jc-slide-studio"
-  title_zh: "Markdown 学术幻灯片工作台与独立离线渲染引擎"
-  kicker: "交互式成片演示 · Live Presentation Demo"
+  title: "Markdown ⇄ HTML"
+  title_zh: "从极简书写到交互成片：演示稿的解耦与重构"
+  kicker: "通用演示 · Concept & Architecture"
   theme: academic-paper
   themes: "academic-paper,minimal-white,sunset-warm,catppuccin-mocha,editorial-serif,nord"
   lang: zh
@@ -17,112 +17,106 @@ jc:
 :::
 
 ---
-<!-- slide: layout=toc | section=核心架构 -->
+<!-- slide: layout=toc | section=演进理念 -->
 # 目录导航
 
-1. 项目定位与核心优势
-2. 双向联动与受控编辑
-3. 学术公式与图表排版
-4. 分步动画与放映交互
-5. 快速上手与本地安装
+1. 书写层与表现层的权衡
+2. 结构解耦：Markdown AST 与 DOM
+3. 数学表达：从 LaTeX 源码到矢量渲染
+4. 动态交互：分步动画与状态机
+5. 独立成片：自包含单文件 HTML 分发
 
 ---
 <!-- slide: layout=two-col | transition=slide -->
-# 项目定位与核心特性
+# 书写层 vs. 表现层：职责解耦
 
-- **脱离环境独立运行**：作为标准 Python / Web 工具分发，零外部服务器依赖。
-- **双向联动聚焦**：大纲、源码光标与成片画布三向协同，点击元素直达 Markdown 源码。
-- **受控原子回写**：在预览与卡片中修改版式，通过事务安全更新源文件。
-- **开箱即用打包**：内置 36 套专业学术主题、离线中文字体与播放运行时。
-
-+++
-
-::: box 为什么选择 Markdown 排版幻灯片？
-- 纯文本版本控制，Git 历史一目了然
-- 内容与样式解耦，支持一键切换 36 种主题配色
-- 离线单文件 HTML 输出，随时随地在任何浏览器中放映
-:::
-
-::: notes
-展示 Markdown 在学术汇报和技术演讲中的独特生产力优势。
-:::
-
----
-<!-- slide: layout=two-col | transition=fade | section=学术排版 -->
-# 学术公式与数学模型
-
-支持 KaTeX 高精度数学公式原生渲染，适合展示认知模型与计算公式：
-
-漂移扩散模型（Drift Diffusion Model, DDM）：
-$$dx(t) = v \cdot dt + s \cdot dW(t)$$
-
-贝叶斯后验推断公式：
-$$P(\theta \mid D) = \frac{P(D \mid \theta) P(\theta)}{\int P(D \mid \theta') P(\theta') d\theta'}$$
+- **Markdown（书写层）**
+- 纯文本语义、低心智负担
+- Git 纳管逐行 diff，多人协同无黑盒二进制冲突
+- 专注于思考、论点组织与内容沉淀
 
 +++
 
-::: box 参数语义说明
-- $v$：漂移率（Drift Rate），表征证据积累速率
-- $a$：边界距离（Boundary Separation），表征决策保守程度
-- $z$：初始偏好（Starting Point Bias）
-- $t_0$：非决策时间（Non-decision Time）
-:::
+- **HTML / DOM（表现层）**
+- CSS 响应式流式布局与 36 套全局主题体系
+- 矢量动画、键盘事件与幻灯片状态机
+- 跨平台免安装，任意现代浏览器即可放映
 
 ::: notes
-KaTeX 支持行内与块级公式，保持高对比度与矢量清晰度。
+内容与样式的彻底解耦：一次书写，即可通过不同主题与引擎编译为多种放映形态。
 :::
 
 ---
-<!-- slide: layout=bullets | transition=slide | section=动画交互 -->
-# 分步动画与演示节奏控制
+<!-- slide: layout=two-col | transition=fade | section=数学公式 -->
+# 数学公式原生渲染：LaTeX 到 KaTeX
+
+行内公式示例：香农信息熵公式 $H(X) = -\sum_{i=1}^n P(x_i) \log_2 P(x_i)$，在文本段落行内自然混排。
+
+块级高斯分布概率密度函数：
+$$f(x \mid \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(x - \mu)^2}{2\sigma^2} \right)$$
+
+经典欧拉恒等式：$e^{i\pi} + 1 = 0$
+
++++
+
+::: box KaTeX 渲染机制优势
+- **纯前端零延迟**：毫秒级生成 HTML 与 MathML 结构
+- **排版无抖动**：同步字体度量，避免加载过程中的布局闪烁
+- **矢量级清晰度**：4K 高清大屏投影边缘始终平滑锐利
+:::
+
+::: notes
+公式支持行内与块级两种模式，无需转为光栅图片，保持高清晰度与复制性。
+:::
+
+---
+<!-- slide: layout=bullets | transition=slide | section=动态交互 -->
+# 编译管线：从源文到成片的三阶段
 
 ::: fragment step=1 effect=fade-up
-- **第一步**：使用 `::: fragment` 语法标记动画组与触发步次。
+- **Phase 1 · 词法与语法树解析**：扫描 Frontmatter 元数据、分节标题与 `+++` 分栏符，构建结构化 AST。
 :::
 
 ::: fragment step=2 effect=fade
-- **第二步**：支持多种入场动效（`fade`, `fade-up`, 缩放与位移）。
+- **Phase 2 · 模板装配与资产注入**：注入 36 套学术/现代主题 CSS、离线 CJK 字体规则与放映运行时。
 :::
 
 ::: fragment step=3 effect=fade-up
-- **第三步**：演示者可随时按左键撤回上一步，按右键或空格继续播放。
+- **Phase 3 · 单文件完全自包含**：将依赖内联为单份脱网 HTML，随时随地在任何设备上播放。
 :::
 
 ::: notes
-按方向右键或空格键，内容将按定义的步骤逐条平滑出现。
+按右键或空格键，各阶段将按预设节奏平滑逐条入场。
 :::
 
 ---
 <!-- slide: layout=two-col | transition=fade -->
-# 命令行工具与工作台
+# 极简标记与对应产物
 
-```bash
-# 环境体检
-jc-slide-studio doctor
+```markdown
+<!-- slide: layout=two-col -->
+# 页面标题
 
-# 编译为单文件离线 HTML
-jc-slide-studio render deck.md --out ./dist
+左栏核心说明文字
 
-# 启动本地实时编辑工作台
-jc-slide-studio edit deck.md
++++
 
-# 启动云端/数据库幻灯片库
-jc-slide-studio serve --port 9000
+右栏补充卡片或图表
 ```
 
 +++
 
-::: box 质量守门与工程规范
-- 37 项端到端测试与单元测试全面覆盖
-- 支持 Playwright 真实浏览器操作自动化测试
-- 标准 AST 语法树解析与双向源码无损映射
+::: box 极简语法的力量
+- 无需繁重的闭合 HTML 标签
+- 单个 `+++` 即可实现响应式双栏排版
+- 单命令一键编译打包：`jc-slide-studio render deck.md`
 :::
 
 ---
 <!-- slide: layout=end -->
-# 谢谢观看
+# Markdown 书写 · HTML 呈现
 
 > [GitHub 仓库](https://github.com/panwanke/md-slides) · [在线演示](https://panwanke.github.io/md-slides/)
 
-- 欢迎 Star 与提出 Issue
-- 支持纯本地运行与离线分发
+- 纯文本可持久化、无黑盒依赖
+- 开箱即用离线运行与分发
