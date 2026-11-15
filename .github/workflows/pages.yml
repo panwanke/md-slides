@@ -34,6 +34,10 @@ jobs:
           mkdir -p _site
           python -m jc_slide_studio.cli render demo/showcase.md --bundle --out _site
           mv _site/showcase_rendered.html _site/index.html
+          cp docs/images/icon.svg _site/icon.svg
+          cp docs/images/icon-32.png _site/icon-32.png
+          cp docs/images/icon-512.png _site/icon-512.png
+          cp docs/images/icon-32.png _site/favicon.ico
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

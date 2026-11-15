@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/icon.svg" width="128" height="128" alt="jc-slide-studio logo" />
+</p>
+
 # jc-slide-studio
 
 > [中文版](README_zh.md) | [Live Demo](https://panwanke.github.io/md-slides/)

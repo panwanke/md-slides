@@ -63,5 +63,14 @@ class AssetProvider:
         js_text = nav_js.read_text(encoding="utf-8") if nav_js.is_file() else ""
         return css_text, js_text
 
+    def get_favicon_tag(self) -> str:
+        icon_file = self.assets_dir / "icon.svg"
+        if icon_file.is_file():
+            import base64
+            b64 = base64.b64encode(icon_file.read_bytes()).decode("ascii")
+            return f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,{b64}">'
+        return '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">'
+
+
 
 default_provider = AssetProvider()

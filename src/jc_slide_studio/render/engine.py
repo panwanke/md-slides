@@ -103,6 +103,7 @@ HEAD_TEMPLATE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
+{favicon_tag}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <style>
 {fonts_css}
@@ -635,6 +636,7 @@ def render_text(
     head = HEAD_TEMPLATE.format(
         lang=meta.get("jc", {}).get("lang") or meta.get("lang") or "zh",
         title=title,
+        favicon_tag=default_provider.get_favicon_tag(),
         fonts_css=fonts_css or OFFLINE_FONTS,
         base_css=base_css,
         anim_css=anim_css,
