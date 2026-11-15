@@ -490,19 +490,24 @@ def render_slide(raw_slide: str, meta: Dict[str, Any], idx: int, total: int, nav
     return slide_html, layout, smeta
 
 
-def render_deck(
-    source_path: Path | str,
-    out_dir: Optional[Path | str] = None,
-    filename: Optional[str] = None,
+def render_text(
+    content: str,
+    *,
     theme: Optional[str] = None,
-    bundle: bool = True,
     extra_scripts: str = "",
-) -> Tuple[str, Optional[Path]]:
-    """Render a Markdown presentation to complete HTML."""
-    path = Path(source_path).resolve()
-    text = path.read_text(encoding="utf-8")
+    stem: str = "deck",
+) -> Tuple[str, Dict[str, Any]]:
+    """Render Markdown *content* into a complete HTML presentation.
 
-    meta, body_after_fm, _ = parse_front_matter(text)
+    Stateless counterpart of :func:`render_deck`: it never touches the filesystem,
+    so the very same pipeline can serve a local file, a database row or a request
+    body. Only ``out_dir``/``bundle`` need a document-relative ``base_dir`` and
+    therefore stay in ``render_deck``.
+
+    Returns ``(html, info)`` where ``info`` carries ``slideCount``, ``title`` and
+    ``theme`` for callers that need metadata without re-parsing the Markdown.
+    """
+    meta, body_after_fm, _ = parse_front_matter(content)
     slides_body, _ = strip_workspace(body_after_fm)
     raw_slides = [s["raw"] for s in split_slides_with_ranges(slides_body)]
     total = len(raw_slides)
@@ -520,6 +525,7 @@ def render_deck(
 
     # Theme selection
     chosen_theme = theme or meta.get("jc", {}).get("theme") or meta.get("theme") or "academic-paper"
+    title = meta.get("jc", {}).get("title") or meta.get("title") or stem
     theme_css = default_provider.get_theme_css(chosen_theme)
     base_css = default_provider.get_base_css()
     fonts_css = default_provider.get_fonts_css()
@@ -531,7 +537,7 @@ def render_deck(
 
     head = HEAD_TEMPLATE.format(
         lang=meta.get("jc", {}).get("lang") or meta.get("lang") or "zh",
-        title=meta.get("jc", {}).get("title") or meta.get("title") or path.stem,
+        title=title,
         fonts_css=fonts_css or OFFLINE_FONTS,
         base_css=base_css,
         anim_css=anim_css,
@@ -547,6 +553,22 @@ def render_deck(
     )
 
     full_html = head + "\n".join(rendered_slides) + tail
+    info = {"slideCount": total, "title": title, "theme": chosen_theme}
+    return full_html, info
+
+
+def render_deck(
+    source_path: Path | str,
+    out_dir: Optional[Path | str] = None,
+    filename: Optional[str] = None,
+    theme: Optional[str] = None,
+    bundle: bool = True,
+    extra_scripts: str = "",
+) -> Tuple[str, Optional[Path]]:
+    """Render a Markdown presentation file to complete HTML."""
+    path = Path(source_path).resolve()
+    text = path.read_text(encoding="utf-8")
+    full_html, _ = render_text(text, theme=theme, extra_scripts=extra_scripts, stem=path.stem)
 
     out_file = None
     if out_dir:

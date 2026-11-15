@@ -17,7 +17,7 @@ md-slides/
 ├── AGENTS.md                # 包含 ara-governance 治理块
 │
 ├── src/                     # Python 核心引擎源码
-│   └── jc_slide_studio/     # 核心包（cli, document, render, session, server, providers）
+│   └── jc_slide_studio/     # 核心包（cli, document, render, session, server, providers, studio）
 ├── web/                     # Web 前端工作台（React + Vite + CodeMirror 6）
 ├── schemas/                 # 通信协议与 AST 结构模式
 ├── tests/                   # 单元、集成与浏览器测试

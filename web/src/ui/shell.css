@@ -1,0 +1,179 @@
+/* Login / library shell — shares the workbench's light palette. */
+
+.boot-screen {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.user-chip {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+/* ---- Login ---- */
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: var(--background, #f7f7f2);
+}
+
+.auth-card {
+  width: min(420px, 100%);
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: 0 20px 50px rgba(33, 44, 52, .08);
+}
+
+.auth-brand { display: flex; gap: 14px; align-items: flex-start; }
+.auth-brand h1 { margin: 0 0 6px; font-size: 20px; color: var(--ink); }
+.auth-brand p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 26px 0 20px;
+  padding: 4px;
+  border-radius: 9px;
+  background: var(--sidebar);
+}
+.auth-tabs button {
+  flex: 1;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+.auth-tabs button[aria-selected="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(33, 44, 52, .1);
+}
+
+.auth-field { display: block; margin-bottom: 16px; }
+.auth-field > span { display: block; margin-bottom: 7px; font-size: 12px; color: var(--muted); }
+.auth-input {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--subtle);
+}
+.auth-input:focus-within { border-color: var(--accent); }
+.auth-input input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.auth-error { margin: 0 0 14px; font-size: 12.5px; color: var(--accent-ink); }
+.auth-submit {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+}
+.auth-submit:disabled { opacity: .6; }
+.auth-footnote { margin: 20px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--subtle); }
+.auth-footnote code { font-family: var(--mono); font-size: 11px; }
+
+/* ---- Library ---- */
+.library { min-height: 100vh; background: var(--background, #f7f7f2); }
+.library-header {
+  height: 65px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+.library-account { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); }
+
+.library-main { max-width: 1080px; margin: 0 auto; padding: 38px 28px 70px; }
+.library-title-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.library-title-row h1 { margin: 0 0 6px; font-size: 24px; color: var(--ink); }
+.library-title-row p { margin: 0; font-size: 13px; color: var(--muted); }
+.library-actions { display: flex; gap: 10px; }
+.library-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.library-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 26px 0 18px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--subtle);
+}
+.library-search input { flex: 1; padding: 10px 0; border: 0; outline: none; background: transparent; font-size: 13px; }
+
+.library-error { color: var(--accent-ink); font-size: 13px; }
+.library-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 70px 20px;
+  color: var(--subtle);
+  font-size: 13px;
+}
+
+.deck-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.deck-card {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--paper);
+  overflow: hidden;
+  transition: border-color .15s, box-shadow .15s;
+}
+.deck-card:hover { border-color: var(--accent); box-shadow: 0 8px 22px rgba(33, 44, 52, .08); }
+.deck-open { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 18px; border: 0; background: transparent; text-align: left; }
+.deck-card-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: var(--accent-pale); color: var(--accent-ink); }
+.deck-open strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; color: var(--ink); }
+.deck-card-meta { font-size: 11.5px; color: var(--subtle); }
+.deck-card-actions { display: flex; gap: 6px; padding: 9px 12px; border-top: 1px solid var(--line); background: var(--sidebar); }
+.deck-card-actions button { padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 11.5px; }
+.deck-card-actions button:hover { background: var(--paper); color: var(--accent-ink); }
+
+/* ---- Revision panel ---- */
+.revision-overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(33, 44, 52, .35); z-index: 20; }
+.revision-panel { width: min(520px, 92vw); max-height: 76vh; overflow: auto; padding: 22px; border-radius: 12px; background: var(--paper); }
+.revision-panel header { display: flex; align-items: center; justify-content: space-between; }
+.revision-panel h2 { margin: 0; font-size: 16px; color: var(--ink); }
+.revision-panel header button { border: 0; background: transparent; color: var(--muted); }
+.revision-note { font-size: 12px; color: var(--subtle); }
+.revision-panel ul { list-style: none; margin: 14px 0 0; padding: 0; }
+.revision-panel li { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.revision-panel li strong { color: var(--accent-ink); min-width: 42px; }
+.revision-panel li em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--subtle); }

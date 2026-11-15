@@ -65,3 +65,93 @@ jc-slide-studio render <source.md> --out <directory> --json
 - `{"type": "BUILD_STATE", "building": false, "previewRevision": 13, "htmlUrl": "/preview/live"}`
 - `{"type": "CONFLICT_DETECTED", "diskRevision": "external", "message": "文件已被外部修改"}`
 - `{"type": "FOCUS_SOURCE", "line": 45, "column": 1, "range": [1024, 1080]}`
+
+## 3. 无状态渲染接口
+
+`POST /api/render` 与 `/api/document`、`/preview/*` 的区别：**不依赖 `state.source_path`**，
+Markdown 由请求体提供，服务端不读写任何文档文件。三种来源（本地文件、数据库行、远端载荷）
+因此共用同一套渲染管线。
+
+请求：
+
+```json
+{ "content": "# 标题\n\n---\n\n# 第二页", "theme": "dracula" }
+```
+
+成功响应（200）：
+
+```json
+{
+  "ok": true,
+  "html": "<!DOCTYPE html>...",
+  "slideCount": 2,
+  "title": "deck",
+  "theme": "dracula"
+}
+```
+
+Markdown 语法错误（422）：
+
+```json
+{ "detail": "Fragments require a positive step and effect=none|fade|fade-up" }
+```
+
+`GET /api/doctor` 额外返回 `statelessRender: true`，供客户端探测该能力。
+
+Python 侧对应 `render.render_text(content, *, theme, extra_scripts, stem)`，
+返回 `(html, info)`；`render_deck(path)` 只是「读文件 → `render_text` → 可选打包落盘」的薄封装，
+两者生成的 HTML 逐字节一致（回归测试见 `tests/test_render_api.py`）。
+
+## 4. 前端存储适配层
+
+`web/src/store/types.ts` 定义 `DeckStore`：
+
+```ts
+interface DeckStore {
+  load(): Promise<LoadedDeck>;
+  save(content: string): Promise<SavedDeck>;
+}
+```
+
+`EditorSession` 只依赖该接口，不再直接 `fetch('/api/document')`。
+当前有两个实现：
+
+| 实现 | 位置 | 数据来源 |
+|---|---|---|
+| `LocalFileStore` | `web/src/store/localFile.ts` | `GET/PUT /api/document`，单文件本地模式 |
+| `RemoteDeckStore` | `web/src/store/remote.ts` | `GET/PUT /api/decks/{id}`，带 `baseRevision` 乐观锁 |
+
+`App.tsx` 在构造 `EditorSession` 时显式传入实例；`Shell.tsx` 依据 `/api/doctor.source`
+选择模式（有值 = 本地单文件，无值 = 登录 + 幻灯片库）。
+
+## 5. 账号与幻灯片库接口（库模式）
+
+会话为 HttpOnly Cookie `jc_studio_session`（30 天，SameSite=Lax，HTTPS 下自动 Secure）。
+所有 deck 相关接口都带属主约束，前端不传 `owner_id`。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/auth/signup` | `{email, password, displayName?}`，密码 ≥ 8 位 |
+| POST | `/api/auth/login` | `{email, password}` |
+| POST | `/api/auth/logout` | 撤销会话 |
+| GET | `/api/auth/me` | 当前用户；未登录 401 |
+| GET | `/api/decks` | 当前用户的 deck 列表（不含正文） |
+| POST | `/api/decks` | `{title, content?}`，同时写入 revision 1 |
+| POST | `/api/decks/import` | `{files:[{name,content}]}`，一次最多 50 个本地 .md |
+| GET | `/api/decks/{id}` | **与 `/api/document` 同形**：`source/fullPath/content/revision/ast` |
+| PUT | `/api/decks/{id}` | `{content, baseRevision}` → `revision + ast`；版本落后返回 409 |
+| PATCH | `/api/decks/{id}` | `{title}` 重命名 |
+| DELETE | `/api/decks/{id}` | 软删除 |
+| GET | `/api/decks/{id}/revisions` | 最近 50 个版本元数据（不含正文） |
+| GET | `/api/decks/{id}/preview` | 按会话取正文 → 渲染 HTML，供预览 iframe；`?embedded=0` 用于全屏演示 |
+
+**写入协议**：每次保存写入一条完整 Markdown 快照（`deck_revisions`），
+`decks.current_revision` 用 `WHERE current_revision = baseRevision` 做乐观锁。
+落后写入返回 409，前端 `DeckConflictError` 会停止自动重试并把状态标为「版本冲突，请刷新页面」。
+
+**数据文件**：默认 `~/.jc-slide-studio/studio.db`（SQLite，WAL）。
+`JC_STUDIO_DB` 指定完整路径，`JC_STUDIO_DATA_DIR` 指定目录。密码用 PBKDF2-SHA256（20 万轮 + 随机盐），
+数据库只存会话令牌的 SHA-256 摘要。
+
+**尚未包含**：附件/图片的对象存储、分享链接、找回密码、多端实时协同。
+这些不影响上述契约，可后续叠加。

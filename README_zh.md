@@ -1,6 +1,6 @@
 # jc-slide-studio
 
-> [English](README.md)
+> [English](README.md) | [在线演示](https://panwanke.github.io/md-slides/)
 
 jc-slide-studio (md-slides) 是专为学术研究汇报与复杂演示稿设计的 Markdown 幻灯片工作台与独立离线渲染引擎。提供 CodeMirror 6 实时编辑排版、源码与成片双向定位、多栏拖拽及开箱即用的离线 HTML 演示打包。
 
@@ -25,6 +25,21 @@ jc-slide-studio 将幻灯片制作与 Agent 环境完全解耦，提供独立的
 | `jc-slide-studio render <deck.md>` | 将 Markdown 编译为完全自包含的独立离线 HTML 演示稿 |
 | `jc-slide-studio edit <deck.md>` | 启动本地交互式编辑工作台 |
 | `jc-slide-studio preview <deck.md>` | 启动轻量热重载预览服务器 |
+| `jc-slide-studio serve` | 启动带账号系统的幻灯片库（数据存于服务端） |
+
+### 幻灯片库模式
+
+`serve` 不绑定本地文件，浏览器打开后先登录，再进入「我的演示稿」：
+正文保存在服务端数据库，每次保存留下完整版本快照，账号之间数据隔离；
+可一次导入多个本地 `.md`。`edit <deck.md>` 仍是原来的离线单文件模式，两者互不影响。
+
+```bash
+jc-slide-studio serve --port 9000
+# 数据库默认：~/.jc-slide-studio/studio.db
+# 可用 JC_STUDIO_DB=/path/to/studio.db 或 JC_STUDIO_DATA_DIR=/path/to/dir 改位置
+```
+
+接口契约见 [docs/protocol.md](docs/protocol.md)。
 
 ## 快速开始
 

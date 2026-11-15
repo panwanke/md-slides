@@ -7,7 +7,21 @@ import {
 import { EditorSession } from './editorSession';
 import type { Deck, Mode, PreviewClick, SaveStatus, SlideSummary } from './editorSession';
 import { layouts } from './slideSyntax';
+import { LocalFileStore } from './store/localFile';
+import type { DeckStore } from './store/types';
 import './workbench.css';
+
+interface WorkbenchProps {
+  /** Storage implementation. Omitted in local-file mode. */
+  store?: DeckStore;
+  /** iframe source for the embedded preview. */
+  previewUrl?: string;
+  /** Full-screen presentation URL (without the `#/page` fragment). */
+  presentUrl?: string;
+  /** When provided, the header offers a way back to the deck library. */
+  onExit?: () => void;
+  userLabel?: string;
+}
 
 type Pane = 'outline' | 'editor' | 'preview';
 type Split = 'outline' | 'editor';
@@ -31,6 +45,7 @@ const statusLabels: Record<SaveStatus, string> = {
   saving: '正在保存',
   'save-error': '保存失败',
   'load-error': '打开失败',
+  conflict: '版本冲突，请刷新页面',
 };
 
 const layoutLabels = new Map<string, string>(layouts);
@@ -98,7 +113,13 @@ function PreviewControls({
   );
 }
 
-export default function App() {
+export default function App({
+  store,
+  previewUrl = '/preview/workbench',
+  presentUrl = '/preview/live',
+  onExit,
+  userLabel,
+}: WorkbenchProps = {}) {
   const [file, setFile] = useState<{ source: string; fullPath: string }>();
   const [deck, setDeck] = useState<Deck>();
   const [status, setStatus] = useState<SaveStatus>('loading');
@@ -144,6 +165,8 @@ export default function App() {
       setPreviewRevision((current) => Math.max(revision, current));
     }
 
+    // Storage seam: swap LocalFileStore for a remote store to move the deck off
+    // this machine. Nothing else in the workbench needs to change.
     const editor = new EditorSession(host.current!, {
       onLoad(doc) { setFile(doc); setDeck(doc.ast); showRevision(doc.ast.documentRevision); },
       onSave(next) { setDeck(next); showRevision(next.documentRevision); },
@@ -155,7 +178,7 @@ export default function App() {
         setActivePage(page);
         drivePreview(page);
       },
-    });
+    }, store ?? new LocalFileStore());
     session.current = editor;
     void editor.load();
 
@@ -330,12 +353,16 @@ export default function App() {
           <span id="fileNameDisplay">{file?.source ?? (status === 'load-error' ? '未加载文件' : '正在打开稿件…')}</span>
         </div>
         <div className="document-actions">
+          {onExit && <button type="button" className="button" onClick={onExit} title="返回幻灯片库">
+            <ChevronLeft size={16} /><span>幻灯片库</span>
+          </button>}
+          {userLabel && <span className="user-chip" title={userLabel}>{userLabel}</span>}
           <span id="saveStatus" className="save-status" data-state={status} role="status">{statusLabels[status]}</span>
           <button type="button" className="button save-button" aria-label="保存" title="保存（Ctrl/⌘ + S）"
             disabled={!file || status === 'saving'} onClick={() => void session.current?.save()}>
             <Save size={16} /><span>保存</span>
           </button>
-          <a className="button present-button" href={`/preview/live#/${activePage}`} target="_blank" rel="noreferrer">
+          <a className="button present-button" href={`${presentUrl}#/${activePage}`} target="_blank" rel="noreferrer">
             <Monitor size={16} /><span>演示</span><ArrowUpRight className="external-icon" size={13} />
           </a>
         </div>
@@ -473,7 +500,7 @@ export default function App() {
               {file && <div className="frame-assembly" style={{ width: 1280 * scale }}>
                 <div className="frame-box" style={{ height: 720 * scale }}>
                   <iframe id="previewFrame" title="当前幻灯片" ref={frame}
-                    src={`/preview/workbench?revision=${previewRevision}`} onLoad={onPreviewLoad}
+                    src={`${previewUrl}?revision=${previewRevision}`} onLoad={onPreviewLoad}
                     style={{ transform: `scale(${scale})` }} />
                 </div>
                 {selected && <p className="preview-caption" title={slideTitle(selected, deck!)}>{slideTitle(selected, deck!)}</p>}

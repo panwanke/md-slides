@@ -6,6 +6,9 @@ import { minimalSetup } from 'codemirror';
 import { livePreview } from './livePreview';
 import { blockArgument, getAttribute, scanSlideSyntax, slideDirective, updateDirective } from './slideSyntax';
 import type { BlockKind } from './slideSyntax';
+import { LocalFileStore } from './store/localFile';
+import { DeckConflictError } from './store/remote';
+import type { DeckStore, LoadedDeck } from './store/types';
 
 type Span = [number, number];
 
@@ -40,18 +43,12 @@ export interface Deck {
   frontmatter: { title?: string; jc?: { title?: string } };
 }
 
-interface LoadedDocument {
-  source: string;
-  fullPath: string;
-  content: string;
-  ast: Deck;
-}
-
-export type SaveStatus = 'loading' | 'saved' | 'pending' | 'saving' | 'save-error' | 'load-error';
+export type SaveStatus =
+  | 'loading' | 'saved' | 'pending' | 'saving' | 'save-error' | 'load-error' | 'conflict';
 export type Mode = 'live' | 'source';
 
 interface Callbacks {
-  onLoad: (doc: LoadedDocument) => void;
+  onLoad: (doc: LoadedDeck) => void;
   onSave: (deck: Deck) => void;
   onStatus: (status: SaveStatus) => void;
   onCursor: (page: number, line: number, column: number, layout: string) => void;
@@ -85,12 +82,6 @@ function normalizeDeck(deck: Deck, content: string): Deck {
   };
 }
 
-async function request<T>(options?: RequestInit): Promise<T> {
-  const response = await fetch('/api/document', options);
-  if (!response.ok) throw new Error(`Document request failed (${response.status})`);
-  return response.json();
-}
-
 export class EditorSession {
   private readonly mode = new Compartment();
   private view: EditorView | null = null;
@@ -98,12 +89,17 @@ export class EditorSession {
   private inflight: { changes: ChangeDesc } | null = null;
   private timer: number | undefined;
   private destroyed = false;
+  private blocked = false;
 
-  constructor(private readonly host: HTMLElement, private readonly callbacks: Callbacks) {}
+  constructor(
+    private readonly host: HTMLElement,
+    private readonly callbacks: Callbacks,
+    private readonly store: DeckStore = new LocalFileStore(),
+  ) {}
 
   async load() {
     try {
-      const loaded = await request<LoadedDocument>();
+      const loaded = await this.store.load();
       if (this.destroyed) return;
       const content = loaded.content;
       const deck = normalizeDeck(loaded.ast, content);
@@ -161,7 +157,7 @@ export class EditorSession {
   async save() {
     window.clearTimeout(this.timer);
     const { view, snapshot } = this;
-    if (!view || !snapshot || this.inflight) return;
+    if (!view || !snapshot || this.inflight || this.blocked) return;
     const content = view.state.doc.toString();
     if (content === snapshot.content) {
       this.callbacks.onStatus('saved');
@@ -171,11 +167,7 @@ export class EditorSession {
     this.inflight = pending;
     this.callbacks.onStatus('saving');
     try {
-      const saved = await request<{ ast: Deck }>({
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      });
+      const saved = await this.store.save(content);
       if (this.destroyed) return;
       const deck = normalizeDeck(saved.ast, content);
       this.snapshot = { deck, content, changes: pending.changes };
@@ -185,10 +177,13 @@ export class EditorSession {
     } catch (error) {
       if (this.destroyed) return;
       console.error(error);
-      this.callbacks.onStatus('save-error');
+      // A version conflict cannot be resolved by retrying: stop the autosave
+      // loop and let the user reload instead of silently overwriting.
+      this.blocked = error instanceof DeckConflictError;
+      this.callbacks.onStatus(this.blocked ? 'conflict' : 'save-error');
     } finally {
       this.inflight = null;
-      if (!this.destroyed && view.state.doc.toString() !== content) this.scheduleSave();
+      if (!this.destroyed && !this.blocked && view.state.doc.toString() !== content) this.scheduleSave();
     }
   }
 

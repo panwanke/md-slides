@@ -12,7 +12,7 @@ from jc_slide_studio import __protocol_version__, __version__
 from jc_slide_studio.document.check import check_slide_deck
 from jc_slide_studio.providers.assets import default_provider
 from jc_slide_studio.render.engine import render_deck
-from jc_slide_studio.server.app import app, set_active_source
+from jc_slide_studio.server.app import app, set_active_source, state
 
 
 @click.group()
@@ -145,6 +145,29 @@ def edit(source: Path, port: int, no_browser: bool) -> None:
     if not no_browser:
         webbrowser.open(url)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+
+
+@main.command()
+@click.option("--port", default=9000, help="Local server port.")
+@click.option("--host", default="127.0.0.1", help="Bind address (use 0.0.0.0 behind a proxy).")
+@click.option("--no-browser", is_flag=True, help="Do not open browser automatically.")
+def serve(port: int, host: str, no_browser: bool) -> None:
+    """Start the deck-library workbench: accounts + server-side storage.
+
+    Unlike ``edit``, no Markdown file is bound to the process. The browser
+    detects this through ``/api/doctor`` and switches to the login/library view.
+    Set ``JC_STUDIO_DB`` or ``JC_STUDIO_DATA_DIR`` to move the database.
+    """
+    import uvicorn
+    from jc_slide_studio.studio.db import db_path
+
+    state.source_path = None
+    url = f"http://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}/"
+    click.echo(f"Deck library on {url}")
+    click.echo(f"Database: {db_path()}")
+    if not no_browser:
+        webbrowser.open(url)
+    uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

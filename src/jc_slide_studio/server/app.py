@@ -14,9 +14,12 @@ from pydantic import BaseModel
 from jc_slide_studio import __protocol_version__, __version__
 from jc_slide_studio.document.parser import build_document_ast, apply_source_patch, apply_node_patch
 from jc_slide_studio.providers.assets import default_provider
-from jc_slide_studio.render.engine import render_deck
+from jc_slide_studio.render.engine import render_deck, render_text
+from jc_slide_studio.server.preview_scripts import HOT_RELOAD_SCRIPT
+from jc_slide_studio.server.api import router as studio_router
 
 app = FastAPI(title="jc-slide-studio", version=__version__)
+app.include_router(studio_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,72 +38,6 @@ class StudioState:
 
 state = StudioState()
 
-HOT_RELOAD_SCRIPT = r"""
-<script data-jc-studio-live>
-(() => {
-  const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
-  const embedded = location.pathname === '/preview/workbench';
-  let ws = null;
-  function connect() {
-    ws = new WebSocket(wsUrl);
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'RELOAD') {
-          location.reload();
-        } else if (msg.type === 'GOTO_PAGE' && window.JCDeck) {
-          JCDeck.goTo(msg.page, msg.step || 1);
-        }
-      } catch (e) {}
-    };
-    ws.onclose = () => { setTimeout(connect, 1000); };
-  }
-  if (!embedded) connect();
-
-  // Bidirectional element click -> notify parent workbench
-  document.addEventListener('click', (e) => {
-    const target = e.target;
-    if (window.parent === window || !(target instanceof Element)) return;
-    const slide = target.closest('section.slide');
-    if (!slide) return;
-    const slideId = slide.getAttribute('data-slide-id');
-    const slideNumberEl = slide.querySelector('.slide-number');
-    const slideIndex = parseInt(slideNumberEl?.getAttribute('data-current') || '1', 10);
-
-    let nodeType = 'unknown';
-    let text = '';
-    const heading = target.closest('h1, h2, h3, h4');
-    const notes = target.closest('.notes');
-    const fig = target.closest('.jc-figbox, figure');
-
-    if (heading) {
-      nodeType = 'heading';
-      text = heading.innerText.trim();
-    } else if (notes) {
-      nodeType = 'notes';
-      text = notes.innerText.trim();
-    } else if (fig) {
-      nodeType = 'image';
-      const img = fig.querySelector('img');
-      text = img ? (img.getAttribute('src') || '') : '';
-    } else if (target.closest('p, li, blockquote')) {
-      nodeType = 'text';
-      text = target.innerText.trim();
-    }
-
-    try {
-      window.parent.postMessage({
-        type: 'ELEMENT_CLICKED',
-        slideId: slideId,
-        slideIndex: slideIndex,
-        nodeType: nodeType,
-        text: text
-      }, location.origin);
-    } catch(err) {}
-  });
-})();
-</script>
-"""
 
 WORKBENCH_DIST = Path(__file__).resolve().parents[1] / "web_dist"
 app.mount("/workbench", StaticFiles(directory=WORKBENCH_DIST, check_dir=False), name="workbench")
@@ -110,6 +47,13 @@ class ContentPayload(BaseModel):
     content: str
 
 
+class RenderPayload(BaseModel):
+    """Stateless render request: the server holds no document for this route."""
+
+    content: str
+    theme: Optional[str] = None
+
+
 class PatchPayload(BaseModel):
     base_revision: Optional[int] = None
     node_id: Optional[str] = None
@@ -117,6 +61,21 @@ class PatchPayload(BaseModel):
     start_offset: Optional[int] = None
     end_offset: Optional[int] = None
     replacement: Optional[str] = None
+
+
+@app.post("/api/render")
+async def render_document(payload: RenderPayload):
+    """Render Markdown supplied in the request body, without any filesystem state.
+
+    Unlike ``/api/document`` and ``/preview/*`` this route does not depend on
+    ``state.source_path``. It exists so a document stored anywhere (a database,
+    another machine, a future cloud store) can go through the identical engine.
+    """
+    try:
+        html_text, info = render_text(payload.content, theme=payload.theme)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"ok": True, "html": html_text, **info}
 
 
 @app.post("/api/patch")
@@ -226,6 +185,7 @@ async def get_doctor():
         "version": __version__,
         "themes": default_provider.list_themes(),
         "source": str(state.source_path) if state.source_path else None,
+        "statelessRender": True,
     }
 
 

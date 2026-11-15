@@ -1,6 +1,6 @@
 # jc-slide-studio
 
-> [中文版](README_zh.md)
+> [中文版](README_zh.md) | [Live Demo](https://panwanke.github.io/md-slides/)
 
 jc-slide-studio (md-slides) is a standalone Markdown academic slide workbench and offline rendering engine featuring real-time CodeMirror 6 live editing, bidirectional source mapping, and instant HTML presentation generation.
 
@@ -25,6 +25,22 @@ Key views and workflows include:
 | `jc-slide-studio render <deck.md>` | Compile Markdown into a standalone offline HTML presentation |
 | `jc-slide-studio edit <deck.md>` | Launch the interactive local studio workbench |
 | `jc-slide-studio preview <deck.md>` | Launch a lightweight live-reloading presentation preview server |
+| `jc-slide-studio serve` | Start the account-based deck library (server-side storage, no bound file) |
+
+### Deck library mode
+
+`serve` starts the same workbench with a sign-in screen and a deck library:
+decks are stored in a server-side SQLite database, every save keeps a full
+revision snapshot, and each account only sees its own decks. Local `.md` files
+can be imported in bulk. `edit <deck.md>` remains the offline single-file mode.
+
+```bash
+jc-slide-studio serve --port 9000
+# Database: ~/.jc-slide-studio/studio.db
+# Override with JC_STUDIO_DB=/path/to/studio.db or JC_STUDIO_DATA_DIR=/path/to/dir
+```
+
+The API contract is documented in [docs/protocol.md](docs/protocol.md).
 
 ## Quick Start
 
