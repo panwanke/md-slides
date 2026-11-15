@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "JcSlideStudioProtocol",
+  "type": "object",
+  "properties": {
+    "protocolVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "source": {
+      "type": "string"
+    },
+    "output": {
+      "type": "string"
+    },
+    "slideCount": {
+      "type": "integer"
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "level": { "type": "string", "enum": ["info", "warning", "error"] },
+          "message": { "type": "string" },
+          "line": { "type": "integer" },
+          "column": { "type": "integer" }
+        },
+        "required": ["level", "message"]
+      }
+    }
+  },
+  "required": ["protocolVersion", "ok"]
+}

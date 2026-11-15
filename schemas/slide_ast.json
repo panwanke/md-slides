@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SlideAST",
+  "type": "object",
+  "properties": {
+    "documentRevision": { "type": "integer" },
+    "slides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slideId": { "type": "string" },
+          "index": { "type": "integer" },
+          "title": { "type": "string" },
+          "sourceRange": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "layout": { "type": "string" },
+          "notes": { "type": "string" },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "nodeId": { "type": "string" },
+                "nodeType": { "type": "string" },
+                "sourceRange": {
+                  "type": "array",
+                  "items": { "type": "integer" },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "editableFields": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              },
+              "required": ["nodeId", "nodeType", "sourceRange"]
+            }
+          }
+        },
+        "required": ["slideId", "index", "sourceRange"]
+      }
+    }
+  },
+  "required": ["documentRevision", "slides"]
+}

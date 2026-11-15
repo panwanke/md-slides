@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="180" viewBox="0 0 800 180">
+  <rect width="800" height="180" rx="16" fill="#f4f6fa"/>
+  <g fill="#375b8c"><rect x="45" y="50" width="160" height="80" rx="12"/><rect x="320" y="50" width="160" height="80" rx="12"/><rect x="595" y="50" width="160" height="80" rx="12"/></g>
+  <path d="M220 90H300m195 0h80" stroke="#375b8c" stroke-width="5"/>
+  <g fill="white" font-family="Arial,sans-serif" font-size="30" text-anchor="middle"><text x="125" y="101">MD</text><text x="400" y="101">HTML</text><text x="675" y="101">SHARE</text></g>
+</svg>

@@ -1,0 +1,489 @@
+import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
+import {
+  ArrowUpRight, ChevronsUpDown, ChevronDown, ChevronLeft, ChevronRight, Code2, Columns,
+  FileText, Film, List, Monitor, PanelTop, Plus, Presentation, Save, StickyNote,
+} from 'lucide-react';
+import { EditorSession } from './editorSession';
+import type { Deck, Mode, PreviewClick, SaveStatus, SlideSummary } from './editorSession';
+import { layouts } from './slideSyntax';
+import './workbench.css';
+
+type Pane = 'outline' | 'editor' | 'preview';
+type Split = 'outline' | 'editor';
+
+interface PlayerState {
+  page: number;
+  step: number;
+  steps: number;
+  total: number;
+}
+
+interface DeckPlayer {
+  getState: () => PlayerState;
+  goTo: (page: number, step?: number) => PlayerState;
+}
+
+const statusLabels: Record<SaveStatus, string> = {
+  loading: '正在加载',
+  saved: '已保存',
+  pending: '有未保存的修改',
+  saving: '正在保存',
+  'save-error': '保存失败',
+  'load-error': '打开失败',
+};
+
+const layoutLabels = new Map<string, string>(layouts);
+const pageNumber = (page: number) => String(page).padStart(2, '0');
+
+function slideTitle(slide: SlideSummary, deck: Deck) {
+  if (slide.layout === 'cover') return deck.frontmatter.jc?.title || deck.frontmatter.title || slide.title;
+  return slide.title === `Slide ${slide.index}` ? '未命名幻灯片' : slide.title;
+}
+
+function player(frame: HTMLIFrameElement | null) {
+  return (frame?.contentWindow as (Window & { JCDeck?: DeckPlayer }) | null)?.JCDeck;
+}
+
+function readSplit() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('jc-studio-workbench-split') || '{}');
+    return {
+      outline: Number.isFinite(saved.outline) ? Math.max(160, Math.min(360, saved.outline)) : 230,
+      editor: Number.isFinite(saved.editor) ? Math.min(0.72, Math.max(0.28, saved.editor)) : 0.47,
+    };
+  } catch {
+    return { outline: 230, editor: 0.47 };
+  }
+}
+
+function PreviewControls({
+  page, total, stepped, state, onToggle, onStep, onNavigate,
+}: {
+  page: number;
+  total: number;
+  stepped: boolean;
+  state: PlayerState | null;
+  onToggle: () => void;
+  onStep: (delta: number) => void;
+  onNavigate: (page: number) => void;
+}) {
+  return (
+    <footer className="preview-footer">
+      <div className="preview-steps">
+        <button type="button" className="step-toggle" aria-pressed={stepped} onClick={onToggle}
+          disabled={!total}>
+          <Film size={15} /> 分步
+        </button>
+        {stepped && state && state.steps > 0 && (
+          <div className="step-counter">
+            <button type="button" className="icon-button" title="上一步" aria-label="上一步"
+              disabled={state.step === 0} onClick={() => onStep(-1)}><ChevronLeft size={15} /></button>
+            <span>{state.step}/{state.steps}</span>
+            <button type="button" className="icon-button" title="下一步" aria-label="下一步"
+              disabled={state.step >= state.steps} onClick={() => onStep(1)}><ChevronRight size={15} /></button>
+          </div>
+        )}
+      </div>
+      <div className="preview-pager">
+        <button type="button" className="icon-button" title="上一页" aria-label="上一页"
+          disabled={page <= 1} onClick={() => onNavigate(page - 1)}><ChevronLeft size={17} /></button>
+        <span aria-label={total ? `第 ${page} 页，共 ${total} 页` : '没有幻灯片'}>
+          {pageNumber(total ? page : 0)} <span>/</span> {pageNumber(total)}
+        </span>
+        <button type="button" className="icon-button" title="下一页" aria-label="下一页"
+          disabled={page >= total} onClick={() => onNavigate(page + 1)}><ChevronRight size={17} /></button>
+      </div>
+    </footer>
+  );
+}
+
+export default function App() {
+  const [file, setFile] = useState<{ source: string; fullPath: string }>();
+  const [deck, setDeck] = useState<Deck>();
+  const [status, setStatus] = useState<SaveStatus>('loading');
+  const [activePage, setActivePage] = useState(1);
+  const [cursor, setCursor] = useState({ line: 1, column: 1, layout: '' });
+  const [mode, setMode] = useState<Mode>('live');
+  const [insertMenu, setInsertMenu] = useState(false);
+  const [closed, setClosed] = useState<Set<string>>(() => new Set());
+  const [pane, setPane] = useState<Pane>('editor');
+  const [split, setSplit] = useState(readSplit);
+  const [stepped, setStepped] = useState(false);
+  const [playerState, setPlayerState] = useState<PlayerState | null>(null);
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const [scale, setScale] = useState(0);
+
+  const session = useRef<EditorSession>();
+  const host = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const workbench = useRef<HTMLElement>(null);
+  const outline = useRef<HTMLElement>(null);
+  const editorPane = useRef<HTMLElement>(null);
+  const active = useRef(1);
+  const byStep = useRef(false);
+  const step = useRef(0);
+  const drivingPreview = useRef(false);
+
+  function drivePreview(page: number, preserveStep = false) {
+    if (!preserveStep) step.current = 0;
+    const deckPlayer = player(frame.current);
+    if (!deckPlayer) return;
+    drivingPreview.current = true;
+    const state = deckPlayer.goTo(page, byStep.current ? step.current : Number.MAX_SAFE_INTEGER);
+    drivingPreview.current = false;
+    if (byStep.current) step.current = state.step;
+    setPlayerState(state);
+  }
+
+  useEffect(() => {
+    function showRevision(revision: number) {
+      setPreviewRevision((current) => Math.max(revision, current));
+    }
+
+    const editor = new EditorSession(host.current!, {
+      onLoad(doc) { setFile(doc); setDeck(doc.ast); showRevision(doc.ast.documentRevision); },
+      onSave(next) { setDeck(next); showRevision(next.documentRevision); },
+      onStatus: setStatus,
+      onCursor(page, line, column, layout) {
+        setCursor({ line, column, layout });
+        if (active.current === page) return;
+        active.current = page;
+        setActivePage(page);
+        drivePreview(page);
+      },
+    });
+    session.current = editor;
+    void editor.load();
+
+    let disposed = false;
+    let socket: WebSocket | undefined;
+    let reconnect = 0;
+    function connect() {
+      const url = new URL('/ws', location.href);
+      url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      socket = new WebSocket(url);
+      socket.onmessage = (event: MessageEvent<string>) => {
+        const message = JSON.parse(event.data);
+        if (message.type === 'RELOAD' && Number.isInteger(message.revision)) showRevision(message.revision);
+      };
+      socket.onclose = () => { if (!disposed) reconnect = window.setTimeout(connect, 1000); };
+    }
+    connect();
+
+    function saveShortcut(event: globalThis.KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void editor.save();
+      }
+    }
+    function onPreviewMessage(event: MessageEvent<PreviewClick & { type?: string }>) {
+      if (event.source !== frame.current?.contentWindow || event.origin !== location.origin) return;
+      if (event.data?.type === 'ELEMENT_CLICKED') editor.revealElement(event.data);
+    }
+    window.addEventListener('keydown', saveShortcut);
+    window.addEventListener('message', onPreviewMessage);
+    return () => {
+      disposed = true;
+      window.clearTimeout(reconnect);
+      socket?.close();
+      window.removeEventListener('keydown', saveShortcut);
+      window.removeEventListener('message', onPreviewMessage);
+      editor.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width && height) setScale(Math.min(width / 1280, Math.max(0, height - 30) / 720));
+    });
+    observer.observe(stage.current!);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!insertMenu) return;
+    function outside(event: Event) {
+      if (event.target instanceof Node && !menu.current?.contains(event.target)) setInsertMenu(false);
+    }
+    function escape(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setInsertMenu(false);
+        menuTrigger.current?.focus();
+      }
+    }
+    window.addEventListener('pointerdown', outside);
+    window.addEventListener('focusin', outside);
+    window.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('pointerdown', outside);
+      window.removeEventListener('focusin', outside);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [insertMenu]);
+
+  useEffect(() => {
+    try { localStorage.setItem('jc-studio-workbench-split', JSON.stringify(split)); } catch { /* Optional. */ }
+  }, [split]);
+
+  function navigate(page: number) {
+    session.current?.selectSlide(page);
+    if (pane === 'outline') setPane('editor');
+  }
+
+  function onPreviewLoad() {
+    const document = frame.current?.contentDocument;
+    if (!player(frame.current)) {
+      setPlayerState(null);
+      return;
+    }
+    drivePreview(active.current, true);
+    document?.addEventListener('deck-state', (event) => {
+      const next = (event as CustomEvent<PlayerState>).detail;
+      setPlayerState(next);
+      if (byStep.current) step.current = next.step;
+      if (!drivingPreview.current && next.page !== active.current) session.current?.selectSlide(next.page);
+    });
+  }
+
+  function toggleStepped() {
+    byStep.current = !byStep.current;
+    setStepped(byStep.current);
+    drivePreview(active.current);
+  }
+
+  function jumpStep(delta: number) {
+    const deckPlayer = player(frame.current);
+    if (!deckPlayer) return;
+    const state = deckPlayer.goTo(active.current, step.current + delta);
+    step.current = state.step;
+    setPlayerState(state);
+  }
+
+  function changeMode(next: Mode) {
+    setMode(next);
+    session.current?.setMode(next);
+  }
+
+  function adjustSplit(which: Split, width: number) {
+    const total = workbench.current?.clientWidth ?? 0;
+    const side = outline.current?.offsetWidth ?? split.outline;
+    if (which === 'outline') {
+      const next = Math.round(Math.max(160, Math.min(360, total - 540, width)));
+      setSplit((current) => ({ ...current, outline: next }));
+    } else {
+      const available = total - side - 16;
+      if (available <= 0) return;
+      const min = Math.min(250, available * 0.4);
+      const next = Math.max(min, Math.min(available - min, width)) / available;
+      setSplit((current) => ({ ...current, editor: next }));
+    }
+  }
+
+  function resize(which: Split, event: PointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const left = (which === 'outline' ? outline : editorPane).current?.getBoundingClientRect().left ?? 0;
+    adjustSplit(which, event.clientX - left - 4);
+  }
+
+  function resizeKey(which: Split, event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const width = (which === 'outline' ? outline : editorPane).current?.getBoundingClientRect().width ?? 0;
+    adjustSplit(which, width + (event.key === 'ArrowRight' ? 24 : -24));
+  }
+
+  function splitter(which: Split, label: string, id: string, controls: string) {
+    return <div className="splitter" id={id} role="separator" tabIndex={0} aria-label={label}
+      aria-orientation="vertical" aria-controls={controls}
+      aria-valuenow={Math.round(100 * (which === 'outline' ? split.outline / (workbench.current?.clientWidth || 1440) : split.editor))}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.currentTarget.classList.add('dragging');
+      }}
+      onPointerMove={(event) => resize(which, event)}
+      onLostPointerCapture={(event) => event.currentTarget.classList.remove('dragging')}
+      onKeyDown={(event) => resizeKey(which, event)} />;
+  }
+
+  const total = deck?.slides.length ?? 0;
+  const selected = deck?.slides[activePage - 1];
+  const allClosed = Boolean(deck?.sections.length) && Boolean(deck?.sections.every(({ id }) => closed.has(id)));
+  const gridStyle = {
+    '--outline-width': `${split.outline}px`,
+    '--editor-share': `${split.editor}fr`,
+    '--preview-share': `${1 - split.editor}fr`,
+  } as CSSProperties;
+
+  return (
+    <div className="studio">
+      <header className="app-bar">
+        <div className="brand"><span className="brand-mark"><Presentation size={19} strokeWidth={1.8} /></span>
+          <span>Slide Studio</span></div>
+        <div className="open-file" title={file?.fullPath}><FileText size={16} />
+          <span id="fileNameDisplay">{file?.source ?? (status === 'load-error' ? '未加载文件' : '正在打开稿件…')}</span>
+        </div>
+        <div className="document-actions">
+          <span id="saveStatus" className="save-status" data-state={status} role="status">{statusLabels[status]}</span>
+          <button type="button" className="button save-button" aria-label="保存" title="保存（Ctrl/⌘ + S）"
+            disabled={!file || status === 'saving'} onClick={() => void session.current?.save()}>
+            <Save size={16} /><span>保存</span>
+          </button>
+          <a className="button present-button" href={`/preview/live#/${activePage}`} target="_blank" rel="noreferrer">
+            <Monitor size={16} /><span>演示</span><ArrowUpRight className="external-icon" size={13} />
+          </a>
+        </div>
+      </header>
+
+      <nav className="mobile-panes" aria-label="工作区">
+        {([{ id: 'outline', label: '大纲', Icon: List }, { id: 'editor', label: '编辑', Icon: FileText },
+          { id: 'preview', label: '预览', Icon: Monitor }] as const).map(({ id, label, Icon }) =>
+          <button type="button" key={id} aria-pressed={pane === id} onClick={() => setPane(id)}>
+            <Icon size={15} />{label}
+          </button>)}
+      </nav>
+
+      <main className="workbench" id="workbench" data-pane={pane} style={gridStyle} ref={workbench}>
+        <aside className="outline-pane" id="sidebar" ref={outline} aria-label="幻灯片大纲">
+          <div className="pane-bar outline-bar">
+            <h2><List size={17} /> 大纲</h2>
+            <div className="pane-actions">
+              <button type="button" className="icon-button" disabled={!total}
+                title={allClosed ? '展开全部章节' : '折叠全部章节'}
+                aria-label={allClosed ? '展开全部章节' : '折叠全部章节'}
+                onClick={() => setClosed(new Set(allClosed ? [] : deck?.sections.map(({ id }) => id)))}>
+                <ChevronsUpDown size={16} />
+              </button>
+              <button type="button" className="icon-button outline-add" id="insertSlideBtn"
+                disabled={!file} title="在当前页后新建幻灯片" aria-label="新建幻灯片"
+                onClick={() => { setPane('editor'); session.current?.insert('slide'); }}>
+                <Plus size={17} />
+              </button>
+            </div>
+          </div>
+          <div className="outline-list" id="slideList">
+            {deck?.sections.map((section) => (
+              <div className="section-group" key={section.id}>
+                <button type="button" className="section-header" aria-expanded={!closed.has(section.id)}
+                  aria-controls={`section-${section.id}`}
+                  onClick={() => setClosed((previous) => {
+                    const next = new Set(previous);
+                    if (next.has(section.id)) next.delete(section.id);
+                    else next.add(section.id);
+                    return next;
+                  })}>
+                  {closed.has(section.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  <span className="section-title" title={section.title}>{section.title}</span>
+                  <span className="section-count">{section.slides.length}</span>
+                </button>
+                <div className="section-slides" id={`section-${section.id}`} hidden={closed.has(section.id)}>
+                  {section.slides.map((slide) =>
+                    <button type="button" key={slide.index} className="slide-item" id={`slide-item-${slide.index}`}
+                      aria-current={activePage === slide.index ? 'page' : undefined} onClick={() => navigate(slide.index)}>
+                      <span className="slide-index">{pageNumber(slide.index)}</span>
+                      <span className="slide-label">
+                        <span className="slide-title" title={slideTitle(slide, deck)}>{slideTitle(slide, deck)}</span>
+                        <span className="slide-layout">{layoutLabels.get(slide.layout) || (slide.layout === 'normal' ? '自动版式' : slide.layout)}</span>
+                      </span>
+                    </button>)}
+                </div>
+              </div>
+            ))}
+            {deck && !total && <p className="outline-empty">使用 ＋ 新建幻灯片</p>}
+          </div>
+          <footer className="outline-footer"><span id="slideCount">{total}</span> 页
+            <span className="middle-dot" /> <span id="sectionCount">{deck?.sections.length ?? 0}</span> 节</footer>
+        </aside>
+
+        {splitter('outline', '调整大纲宽度', 'resizer-1', 'sidebar editorPane')}
+
+        <section className="editor-pane" id="editorPane" ref={editorPane} aria-label="Markdown 编辑区">
+          <div className="pane-bar editor-bar">
+            <h2>Markdown</h2>
+            <div className="pane-actions">
+              <div className="insert-menu" ref={menu}>
+                <button type="button" className="button insert-trigger" ref={menuTrigger} aria-expanded={insertMenu}
+                  aria-controls="insertBlocks" onClick={() => setInsertMenu(!insertMenu)} disabled={!file}>
+                  <Plus size={15} /> 插入块 <ChevronDown size={12} />
+                </button>
+                {insertMenu && (
+                  <div className="insert-popover" id="insertBlocks" role="group" aria-label="插入块">
+                    {([{ id: 'notes', buttonId: 'insertNotesBtn', label: '演讲讲稿', Icon: StickyNote },
+                      { id: 'box', buttonId: 'insertBoxBtn', label: '重点卡片', Icon: PanelTop },
+                      { id: 'fragment', buttonId: 'insertFragmentBtn', label: '分步动画', Icon: Film }] as const)
+                      .map(({ id, buttonId, label, Icon }) =>
+                        <button type="button" id={buttonId} key={id} onClick={() => {
+                          setInsertMenu(false);
+                          session.current?.insert(id);
+                        }}>
+                          <Icon size={16} /><span>{label}</span><code>{id}</code>
+                        </button>)}
+                  </div>
+                )}
+              </div>
+              <div className="mode-control" role="group" aria-label="编辑模式">
+                <button type="button" aria-label="实时编辑" aria-pressed={mode === 'live'}
+                  onClick={() => changeMode('live')} disabled={!file} title="实时编辑">
+                  <FileText size={14} /><span>实时</span>
+                </button>
+                <button type="button" aria-label="Markdown 源码" aria-pressed={mode === 'source'}
+                  onClick={() => changeMode('source')} disabled={!file} title="Markdown 源码">
+                  <Code2 size={16} /><span>源码</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="editor-host" id="editor" data-mode={mode} ref={host} />
+          {!file && (
+            <div className="editor-empty">
+              <FileText size={25} />
+              <p>{status === 'load-error' ? '无法打开当前 Markdown 文件' : '正在读取 Markdown…'}</p>
+              {status === 'load-error' && <button className="button" type="button"
+                onClick={() => { setStatus('loading'); void session.current?.load(); }}>重新加载</button>}
+            </div>
+          )}
+          <footer className="editor-footer">
+            <label className="layout-control"><Columns size={15} /><span>当前版式</span>
+              <select id="layoutSelect" value={cursor.layout} disabled={!total}
+                onChange={(event) => session.current?.setLayout(event.target.value)}>
+                {layouts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {cursor.layout && !layoutLabels.has(cursor.layout) &&
+                  <option value={cursor.layout}>{cursor.layout}</option>}
+              </select>
+            </label>
+            <span className="cursor-position">行 {cursor.line} · 列 {cursor.column}</span>
+          </footer>
+        </section>
+
+        {splitter('editor', '调整编辑器和预览宽度', 'resizer-2', 'editorPane previewPane')}
+
+        <section className="preview-pane" id="previewPane" aria-label="成片预览">
+          <div className="pane-bar preview-bar">
+            <h2><Monitor size={17} /> 成片预览</h2>
+            <span className="preview-ratio">16:9</span>
+          </div>
+          <div className="preview-stage">
+            <div className="frame-fit" ref={stage}>
+              {file && <div className="frame-assembly" style={{ width: 1280 * scale }}>
+                <div className="frame-box" style={{ height: 720 * scale }}>
+                  <iframe id="previewFrame" title="当前幻灯片" ref={frame}
+                    src={`/preview/workbench?revision=${previewRevision}`} onLoad={onPreviewLoad}
+                    style={{ transform: `scale(${scale})` }} />
+                </div>
+                {selected && <p className="preview-caption" title={slideTitle(selected, deck!)}>{slideTitle(selected, deck!)}</p>}
+              </div>}
+            </div>
+          </div>
+          <PreviewControls page={activePage} total={total} stepped={stepped} state={playerState}
+            onToggle={toggleStepped} onStep={jumpStep} onNavigate={navigate} />
+        </section>
+      </main>
+    </div>
+  );
+}
