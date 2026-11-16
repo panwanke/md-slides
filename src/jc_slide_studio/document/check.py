@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 import re
 from typing import Any, Dict, List
+from urllib.parse import unquote, urlsplit
 
 from jc_slide_studio.document.parser import (
+    IMAGE_MARKDOWN,
     parse_front_matter,
     strip_workspace,
     split_slides_with_ranges,
@@ -17,7 +19,13 @@ from jc_slide_studio.document.parser import (
 TODO_RE = re.compile(r"TODO|待补|待确认|待写|XXX|\?\?\?", re.I)
 
 
-def check_slide_deck(source_path: Path | str) -> Dict[str, Any]:
+def check_slide_deck(source_path: Path | str, *, strict: bool = False) -> Dict[str, Any]:
+    """Validate a Markdown deck.
+
+    With ``strict=True`` speaker-note problems become errors, restoring the
+    jc-slides pre-delivery gate. By default they stay warnings so that existing
+    decks without notes still pass a syntax-only check.
+    """
     path = Path(source_path).resolve()
     if not path.is_file():
         return {
@@ -44,9 +52,35 @@ def check_slide_deck(source_path: Path | str) -> Dict[str, Any]:
 
     slides = split_slides_with_ranges(slides_body)
     used_ids = set()
+    jc_meta = meta.get("jc") if isinstance(meta.get("jc"), dict) else {}
+    lang = str(jc_meta.get("lang") or meta.get("lang") or "zh").lower()
+    lo, hi, unit = (80, 320, "words") if lang == "en" else (100, 400, "characters")
+    note_re = re.compile(r"^:::\s*notes\b[^\n]*\n([\s\S]*?)^:::\s*$", re.M)
 
     for idx, s in enumerate(slides, 1):
         smeta, body = parse_slide_meta(s["raw"])
+        layout = (smeta.get("layout") or "").lower()
+        note_chunks = note_re.findall(body)
+        note_level = "error" if strict else "warning"
+        if not note_chunks:
+            diagnostics.append({
+                "level": note_level if layout not in ("journal", "section") else "warning",
+                "message": f"Slide {idx} has no speaker notes",
+                "slideIndex": idx,
+            })
+        else:
+            joined = " ".join(note_chunks)
+            count = len(joined.split()) if lang == "en" else len(re.sub(r"\s+", "", joined))
+            if count < lo or count > hi:
+                bound = "short" if count < lo else "long"
+                diagnostics.append({
+                    "level": note_level,
+                    "message": (
+                        f"Slide {idx} speaker notes too {bound}: "
+                        f"{count} {unit} (expected {lo}-{hi})"
+                    ),
+                    "slideIndex": idx,
+                })
         slide_id = smeta.get("id")
         if slide_id:
             if not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", slide_id):
@@ -64,10 +98,12 @@ def check_slide_deck(source_path: Path | str) -> Dict[str, Any]:
             used_ids.add(slide_id)
 
         # Check image existence
-        for img_match in re.finditer(r"!\[([^\]]*)\]\(([^)\s]+)", body):
-            img_src = img_match.group(2)
-            if not img_src.startswith(("http://", "https://", "data:")):
-                img_path = (path.parent / img_src).resolve()
+        for img_match in IMAGE_MARKDOWN.finditer(body):
+            img_src = img_match.group(2) or img_match.group(3)
+            parsed = urlsplit(img_src)
+            if not parsed.netloc and (not parsed.scheme or re.match(r"^[A-Za-z]:[/\\]", img_src)):
+                local_path = re.split(r"[?#]", img_src, maxsplit=1)[0]
+                img_path = (path.parent / unquote(local_path)).resolve()
                 if not img_path.is_file():
                     diagnostics.append({
                         "level": "warning",
