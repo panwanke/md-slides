@@ -101,6 +101,18 @@
   font-size: 14px;
 }
 .auth-submit:disabled { opacity: .6; }
+.auth-code-button {
+  flex: none;
+  padding: 5px 8px;
+  border: 1px solid var(--line, rgba(0, 0, 0, .12));
+  border-radius: 6px;
+  background: var(--sidebar, rgba(0, 0, 0, .04));
+  color: var(--ink, #222);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.auth-code-button:disabled { opacity: .55; cursor: default; }
+.auth-oauth { margin-top: 10px; background: transparent; color: var(--ink, #222); border: 1px solid var(--line, rgba(0, 0, 0, .14)); }
 .auth-footnote { margin: 20px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--subtle); }
 .auth-footnote code { font-family: var(--mono); font-size: 11px; }
 .auth-card > .project-controls { margin-top: 16px; }

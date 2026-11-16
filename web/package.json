@@ -15,6 +15,7 @@
     "@codemirror/state": "^6.4.1",
     "@codemirror/view": "^6.26.0",
     "@lezer/markdown": "1.8.1",
+    "@tencent-ai/workbuddy-cloud-sdk": "^0.1.4",
     "codemirror": "^6.0.1",
     "katex": "0.16.47",
     "lucide-react": "^0.359.0",

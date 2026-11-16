@@ -34,6 +34,8 @@ export interface WorkbenchProps {
   userLabel?: string;
   /** Static mode options (for GitHub Pages / pure client) */
   staticMode?: boolean;
+  /** Client-side Pyodide preview with cloud persistence (no FastAPI preview route). */
+  clientRender?: boolean;
   previewSrcDoc?: string;
   standaloneHtml?: string;
   staticStatusText?: string;
@@ -152,6 +154,7 @@ export default function App({
   onExit,
   userLabel,
   staticMode = false,
+  clientRender = false,
   previewSrcDoc,
   standaloneHtml,
   staticStatusText,
@@ -302,7 +305,7 @@ export default function App({
     let socket: WebSocket | undefined;
     let reconnect = 0;
     function connect() {
-      if (staticMode) return;
+      if (staticMode || clientRender) return;
       try {
         const url = new URL('/ws', location.href);
         url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -314,11 +317,11 @@ export default function App({
         socket.onclose = () => { if (!disposed) reconnect = window.setTimeout(connect, 1000); };
       } catch { /* ignore in static mode */ }
     }
-    if (!staticMode) connect();
+    if (!staticMode && !clientRender) connect();
 
     function onPreviewMessage(event: MessageEvent<PreviewClick & { type?: string }>) {
       if (event.source !== frame.current?.contentWindow) return;
-      if (!staticMode && event.origin !== location.origin) return;
+      if (!staticMode && !clientRender && event.origin !== location.origin) return;
       if (event.data?.type === 'ELEMENT_CLICKED'
           && ['heading', 'text', 'image', 'notes', 'diagram'].includes(event.data.nodeType)) {
         editor.revealElement(event.data);
@@ -367,7 +370,7 @@ export default function App({
     setExporting(true);
     setExportError('');
     try {
-      const html = staticMode ? standaloneHtml : await exportServerDeck(content, file.assetBase);
+      const html = (staticMode || clientRender) ? standaloneHtml : await exportServerDeck(content, file.assetBase);
       if (html !== undefined) {
         const name = file.source.replace(/\.(?:md|markdown|txt)$/i, '') || 'deck';
         downloadText(`${name}.html`, html, 'text/html;charset=utf-8');
@@ -514,7 +517,7 @@ export default function App({
   }
 
   useEffect(() => {
-    if (!file || staticMode) return;
+    if (!file || staticMode || clientRender) return;
     // Fonts and remote images can hold the iframe's load event after the player is ready.
     const deadline = performance.now() + 10_000;
     const timer = window.setInterval(() => {
@@ -636,7 +639,7 @@ export default function App({
               <ImageIcon size={16} /><span>图片</span>
             </button>
           )}
-          <button type="button" className="button" disabled={!file || exporting || (staticMode && !standaloneHtml)}
+          <button type="button" className="button" disabled={!file || exporting || ((staticMode || clientRender) && !standaloneHtml)}
             onClick={() => void exportHtml()} title="下载单独的 HTML 演示文件">
             <Download size={16} /><span>{exporting ? '正在导出…' : '导出 HTML'}</span>
           </button>
@@ -794,8 +797,8 @@ export default function App({
                     className="studio-preview"
                     title="当前幻灯片"
                     ref={frame}
-                    src={staticMode ? undefined : `${previewUrl}?revision=${previewRevision}${deckId ? '&assets=' + assetRevision : ''}`}
-                    srcDoc={staticMode ? previewSrcDoc : undefined}
+                    src={staticMode || clientRender ? undefined : `${previewUrl}?revision=${previewRevision}${deckId ? '&assets=' + assetRevision : ''}`}
+                    srcDoc={staticMode || clientRender ? previewSrcDoc : undefined}
                     onLoad={onPreviewLoad}
                     style={{ transform: `scale(${scale})` }}
                   />

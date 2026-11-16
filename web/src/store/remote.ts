@@ -1,30 +1,17 @@
-import type { DeckStore, LoadedDeck, SavedDeck } from './types';
+import { isCloudRuntime } from '../cloud/publicConfig';
+import { cloudDeckApi } from '../cloud/store';
+import {
+  DeckConflictError,
+  type DeckAsset,
+  type DeckMeta,
+  type DeckStore,
+  type LoadedDeck,
+  type RevisionMeta,
+  type SavedDeck,
+} from './types';
 
-export interface DeckMeta {
-  id: number;
-  title: string;
-  slug: string;
-  theme: string | null;
-  slideCount: number;
-  revision: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface RevisionMeta {
-  revision: number;
-  note: string | null;
-  createdAt: string;
-  bytes: number;
-}
-
-/** Raised when another window advanced the deck revision first (HTTP 409). */
-export class DeckConflictError extends Error {
-  constructor(message = '文档已被其他窗口更新，请刷新后重试') {
-    super(message);
-    this.name = 'DeckConflictError';
-  }
-}
+export { DeckConflictError } from './types';
+export type { DeckAsset, DeckMeta, RevisionMeta } from './types';
 
 interface ErrorBody {
   detail?: string;
@@ -85,14 +72,6 @@ export interface DeckTemplate {
   content: string;
 }
 
-export interface DeckAsset {
-  name: string;
-  path: string;
-  size: number;
-  mimeType: string;
-  url: string;
-}
-
 function json(method: string, body: unknown): RequestInit {
   return {
     method,
@@ -101,7 +80,7 @@ function json(method: string, body: unknown): RequestInit {
   };
 }
 
-export const deckApi = {
+const localDeckApi = {
   list: () => request<{ ok: boolean; decks: DeckMeta[] }>('/api/decks'),
 
   templates: () => request<{ ok: boolean; templates: DeckTemplate[] }>('/api/templates'),
@@ -134,3 +113,6 @@ export const deckApi = {
   deleteAsset: (asset: DeckAsset) =>
     request<{ ok: boolean }>(asset.url, { method: 'DELETE' }),
 };
+
+/** Single API surface: cloud in WorkBuddy, FastAPI in self-hosted mode. */
+export const deckApi = isCloudRuntime() ? cloudDeckApi : localDeckApi;

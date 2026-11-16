@@ -19,12 +19,46 @@ export interface SavedDeck {
 /**
  * The storage boundary of the editor.
  *
- * EditorSession does not know where the Markdown lives. Today only
- * LocalFileStore exists (one .md file bound to the local Python process).
- * A database-backed store can implement the same two methods without any
- * change to the editor kernel, preview or source mapping.
+ * EditorSession does not know where the Markdown lives. LocalFileStore,
+ * StaticDeckStore, RemoteDeckStore and CloudDeckStore all implement this.
  */
 export interface DeckStore {
   load(): Promise<LoadedDeck>;
   save(content: string): Promise<SavedDeck>;
+}
+
+export interface DeckMeta {
+  id: number;
+  title: string;
+  slug: string;
+  theme: string | null;
+  slideCount: number;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RevisionMeta {
+  revision: number;
+  note: string | null;
+  createdAt: string;
+  bytes: number;
+}
+
+export interface DeckAsset {
+  name: string;
+  path: string;
+  size: number;
+  mimeType: string;
+  url: string;
+  /** Full object key in runtime storage; only present for cloud-backed assets. */
+  storagePath?: string;
+}
+
+/** Raised when another writer advanced the deck revision first (HTTP 409 equivalent). */
+export class DeckConflictError extends Error {
+  constructor(message = '文档已被其他窗口更新，请刷新后重试') {
+    super(message);
+    this.name = 'DeckConflictError';
+  }
 }

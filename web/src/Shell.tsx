@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import CloudApp from './cloud/CloudApp';
+import { isCloudRuntime } from './cloud/publicConfig';
 import Workbench from './App';
 import { RemoteDeckStore } from './store/remote';
 import Login from './ui/Login';
@@ -22,6 +24,10 @@ function deckIdFromHash(hash: string): number | null {
  * Hash routing avoids adding server-side catch-all routes to the FastAPI app.
  */
 export default function Shell() {
+  // WorkBuddy cloud deployment has its own auth/store/render path. GitHub Pages
+  // and self-hosted serve keep the original local/remote behavior.
+  if (isCloudRuntime()) return <CloudApp />;
+
   const [mode, setMode] = useState<Mode>('checking');
   const [user, setUser] = useState<StudioUser | null>(null);
   const [hash, setHash] = useState(() => location.hash);
