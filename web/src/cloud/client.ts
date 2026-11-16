@@ -16,21 +16,30 @@ export interface CloudUser {
   createdAt?: string;
 }
 
-interface RawSession {
-  user?: {
-    id?: string;
-    sub?: string;
-    email?: string;
-    name?: string;
-    display_name?: string;
-    created_at?: string;
-  } | null;
+interface RawUser {
+  id?: string;
+  sub?: string;
+  uid?: string;
+  email?: string;
+  name?: string;
+  display_name?: string;
+  displayName?: string;
+  created_at?: string;
 }
 
-/** Normalize SDK session users into the shape the existing UI expects. */
-export function normalizeUser(session: RawSession | null | undefined): CloudUser | null {
-  const raw = session?.user;
-  const id = raw?.id || raw?.sub;
+interface RawSession {
+  user?: RawUser | null;
+  session?: { user?: RawUser | null } | null;
+}
+
+/** Normalize SDK session or user objects into the shape the existing UI expects. */
+export function normalizeUser(value: RawSession | RawUser | null | undefined): CloudUser | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as RawSession & RawUser;
+  const raw = candidate.id || candidate.sub || candidate.uid
+    ? candidate
+    : candidate.user ?? candidate.session?.user;
+  const id = raw?.id || raw?.sub || raw?.uid;
   if (!id) return null;
   return {
     id,
