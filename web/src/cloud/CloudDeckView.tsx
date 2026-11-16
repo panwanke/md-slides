@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Workbench from '../App';
 import { renderMarkdown } from '../render/pyodideEngine';
-import { CloudDeckStore, resolveCloudImages } from './store';
+import { buildStandaloneHtml, CloudDeckStore, resolveCloudImages } from './store';
 
 interface Props {
   deckId: number;
@@ -46,11 +46,15 @@ export default function CloudDeckView({ deckId, userLabel, onExit }: Props) {
     if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
   }, []);
 
-  function present() {
-    if (!previewHtml) return;
-    if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
-    blobUrl.current = URL.createObjectURL(new Blob([previewHtml], { type: 'text/html;charset=utf-8' }));
-    window.open(blobUrl.current, '_blank', 'noopener,noreferrer');
+  async function present() {
+    try {
+      const html = await buildStandaloneHtml(content, deckId);
+      if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
+      blobUrl.current = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+      window.open(blobUrl.current, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      setRenderError(error instanceof Error ? error.message : '演示文稿生成失败');
+    }
   }
 
   return (
@@ -63,8 +67,9 @@ export default function CloudDeckView({ deckId, userLabel, onExit }: Props) {
         clientRender
         previewSrcDoc={previewHtml}
         standaloneHtml={previewHtml}
+        renderStandalone={() => buildStandaloneHtml(content, deckId)}
         onDocChange={setContent}
-        onPresent={present}
+        onPresent={() => void present()}
         onExit={onExit}
         userLabel={userLabel}
       />

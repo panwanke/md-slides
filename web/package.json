@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:static": "node scripts/pack-engine.mjs && vite build --config vite.static.config.ts",
+    "build:cloud": "tsc && node scripts/pack-engine.mjs && vite build --config vite.cloud.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {

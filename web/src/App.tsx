@@ -39,6 +39,8 @@ export interface WorkbenchProps {
   clientRender?: boolean;
   previewSrcDoc?: string;
   standaloneHtml?: string;
+  /** Async builder for a fully self-contained HTML file (cloud assets inlined). */
+  renderStandalone?: () => Promise<string>;
   staticStatusText?: string;
   tabBar?: React.ReactNode;
   activeTabId?: string;
@@ -184,6 +186,7 @@ export default function App({
   clientRender = false,
   previewSrcDoc,
   standaloneHtml,
+  renderStandalone,
   staticStatusText,
   tabBar,
   activeTabId,
@@ -389,7 +392,9 @@ export default function App({
     setExporting(true);
     setExportError('');
     try {
-      const html = (staticMode || clientRender) ? standaloneHtml : await exportServerDeck(content, file.assetBase);
+      const html = renderStandalone
+        ? await renderStandalone()
+        : (staticMode || clientRender) ? standaloneHtml : await exportServerDeck(content, file.assetBase);
       if (html !== undefined) {
         const name = file.source.replace(/\.(?:md|markdown|txt)$/i, '') || 'deck';
         downloadText(`${name}.html`, html, 'text/html;charset=utf-8');

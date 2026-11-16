@@ -41,6 +41,7 @@ node_modules/
 .vite/
 web/dist/
 web/dist-static/
+web/dist-cloud/
 web/static-public/
 # WorkBuddy 静态托管产物（由 web/dist-static 复制而来，不入库）
 /release/

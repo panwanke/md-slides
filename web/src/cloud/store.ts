@@ -1,7 +1,7 @@
 import { cloud } from './client';
 import { currentUser } from './auth';
 import { starterContent } from './templates';
-import { buildAst } from '../render/pyodideEngine';
+import { buildAst, renderMarkdown } from '../render/pyodideEngine';
 import {
   DeckConflictError,
   type DeckAsset,
@@ -21,6 +21,7 @@ type Storage = {
   list(prefix: string, options?: Record<string, unknown>): Promise<{ data?: unknown; error?: { message?: string } | null }>;
   upload(path: string, body: Blob, options?: Record<string, unknown>): Promise<{ data?: unknown; error?: { message?: string } | null }>;
   remove(paths: string[]): Promise<{ data?: unknown; error?: { message?: string } | null }>;
+  download(path: string): Promise<{ data?: Blob; error?: { message?: string } | null }>;
   createSignedUrl(path: string, ttl?: number): Promise<{ data?: { signedUrl?: string } | null; error?: { message?: string } | null }>;
   userPath(uid: string, path: string): string;
 };
@@ -73,7 +74,13 @@ function countSlides(content: string): number {
 }
 
 function safeName(name: string): string {
-  const base = name.split(/[\\/]/).pop() || 'asset.bin';
+  const raw = name.split(/[\\/]/).pop() || 'asset.bin';
+  let base = raw;
+  try {
+    base = decodeURIComponent(raw);
+  } catch {
+    // Keep the raw segment when it is not valid percent-encoding.
+  }
   return base.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 120);
 }
 
@@ -101,6 +108,58 @@ export async function resolveCloudImages(content: string, deckId: number): Promi
     if (url) resolved = resolved.replace(match[0], match[0].replace(raw, url));
   }
   return resolved;
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Build a self-contained HTML deck for export/presentation. Images are fetched
+ * from cloud storage and inlined as data URLs, so the file stays intact after
+ * the short-lived signed URLs expire. Unlike the live preview, this renders the
+ * original Markdown (relative paths untouched) and rewrites the emitted <img>
+ * tags, mirroring the local `package_document` behaviour in delivery.py.
+ */
+export async function buildStandaloneHtml(content: string, deckId: number): Promise<string> {
+  const uid = await ownerId();
+  const rendered = await renderMarkdown(content);
+  const attribute = document.createElement('textarea');
+  const embedded = new Map<string, Promise<string>>();
+
+  const imageTag = /<script\b[^>]*>[\s\S]*?<\/script\s*>|<img src="([^"]+)"/gi;
+  for (const match of rendered.html.matchAll(imageTag)) {
+    const encoded = match[1];
+    if (!encoded || /^(?:data:|https?:|#|\/)/i.test(encoded)) continue;
+    attribute.innerHTML = encoded;
+    const source = attribute.value.trim().split(/[?#]/, 1)[0];
+    if (!source) continue;
+    const path = await assetPath(deckId, source, uid);
+    if (!embedded.has(encoded)) {
+      embedded.set(encoded, (async () => {
+        const downloaded = await storage.download(path);
+        if (downloaded.error || !downloaded.data) {
+          throw new Error(downloaded.error?.message || `图片不存在：${source}`);
+        }
+        return blobToDataUrl(downloaded.data);
+      })());
+    }
+  }
+
+  const replacements = new Map<string, string>();
+  await Promise.all([...embedded].map(async ([encoded, task]) => {
+    replacements.set(encoded, await task);
+  }));
+
+  return rendered.html.replace(imageTag, (tag, src: string) => {
+    const dataUrl = src ? replacements.get(src) : undefined;
+    return dataUrl ? tag.replace(src, dataUrl) : tag;
+  });
 }
 
 export class CloudDeckStore implements DeckStore {
@@ -279,11 +338,16 @@ export const cloudDeckApi = {
     const files = formData.getAll('files').filter((item): item is File => item instanceof File);
     const saved: DeckAsset[] = [];
     for (const file of files) {
-      const relative = `images/${Date.now()}-${safeName(file.name)}`;
+      // Keep the object key derived from the referenced filename only. Markdown
+      // keeps its original relative path, so resolveCloudImages() looks up the
+      // same basename; a timestamp prefix here would make every imported image
+      // unresolvable. Deterministic keys also make re-imports idempotent.
+      const filename = safeName(file.name);
+      const relative = `images/${filename}`;
       const path = await assetPath(deckId, relative, uid);
       const result = await storage.upload(path, file, {
         contentType: file.type || 'application/octet-stream',
-        upsert: false,
+        upsert: true,
       });
       if (result.error) throw new Error(result.error.message || '上传失败');
       saved.push({
