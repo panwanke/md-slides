@@ -24,5 +24,10 @@ This project incorporates components from or depends upon open-source software:
    - License: MIT License, in `src/md_slide_studio/providers/assets/katex/LICENSE`
    - Usage: Offline math rendering. The bundled CSS embeds the WOFF2 fonts from the distribution.
 
+6. **Pele 1.13.0**
+   - Source: [obsidianmd/pele](https://github.com/obsidianmd/pele)
+   - License: MIT, with bundled notices in `src/md_slide_studio/providers/assets/pele/LICENSE`
+   - Usage: Mermaid diagrams in the editor, the slide preview, and offline HTML exports.
+
 The workbench build includes the license texts of bundled runtime dependencies in
 `src/jc_slide_studio/web_dist/THIRD_PARTY_LICENSES.txt`.

@@ -51,7 +51,7 @@ CLICK_MAP_SCRIPT = r"""
     const diagram = target.closest('.md-diagram');
     if (diagram) {
       nodeType = 'diagram';
-      text = diagram.querySelector('pre')?.textContent?.trim().split('\n')[0] || '';
+      text = diagram.querySelector('pre')?.textContent?.trim() || '';
     } else if (heading) {
       nodeType = 'heading';
       text = heading.innerText.trim();

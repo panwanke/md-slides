@@ -153,15 +153,19 @@ def test_local_workbench_opens_workspace_and_exports_offline(workbench, tmp_path
         assert "Export the current text" in original.read_text(encoding="utf-8")
 
 
-def test_preview_paging_keeps_the_editor_cursor_and_restores_the_view(workbench):
+def test_preview_paging_keeps_the_editor_cursor_and_restores_the_view(workbench, tmp_path):
     url, _ = workbench
+    profile = tmp_path / "browser-profile"
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        context = browser.new_context(viewport={"width": 1440, "height": 900})
+        context = playwright.chromium.launch_persistent_context(profile, viewport={"width": 1440, "height": 900})
         context.route("https://**/*", lambda route: route.abort())
-        page = context.new_page()
+        page = context.pages[0]
         page.goto(url)
         page.get_by_role("button", name="Markdown 源码").click()
+        editor = page.locator("#editor .cm-content")
+        editor.press("Control+Home")
+        editor.press("ArrowRight")
+        editor.press("ArrowRight")
         cursor = page.locator(".cursor-position")
         original = cursor.inner_text()
         frame = page.frame_locator("#previewFrame")
@@ -179,14 +183,17 @@ def test_preview_paging_keeps_the_editor_cursor_and_restores_the_view(workbench)
         expect(frame.locator(".slide.is-active")).to_have_attribute("data-slide-id", "slide-3")
         expect(cursor).to_have_text(original)
 
-        page.close()
-        reopened = context.new_page()
+        context.close()
+        restored = playwright.chromium.launch_persistent_context(profile, viewport={"width": 1440, "height": 900})
+        restored.route("https://**/*", lambda route: route.abort())
+        reopened = restored.pages[0]
         reopened.goto(url)
         expect(reopened.get_by_role("button", name="Markdown 源码")).to_have_attribute("aria-pressed", "true")
         expect(reopened.locator(".cursor-position")).to_have_text(original)
         expect(reopened.frame_locator("#previewFrame").locator(".slide.is-active")).to_have_attribute(
             "data-slide-id", "slide-3",
         )
+        restored.close()
 
 
 def test_pele_renders_in_editor_preview_and_export(workbench, tmp_path):

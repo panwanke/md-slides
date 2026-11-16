@@ -295,7 +295,7 @@ export class EditorSession {
     if (node) {
       [from, to] = this.mapRange(node.sourceRange);
     } else {
-      const snippet = text.trim().slice(0, 40);
+      const snippet = nodeType === 'diagram' ? text.trim() : text.trim().slice(0, 40);
       const relative = snippet ? view.state.doc.sliceString(from, to).indexOf(snippet) : -1;
       if (relative >= 0) {
         from += relative;
