@@ -1,11 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import StaticStudio from './ui/StaticStudio';
+import WorkspaceStudio from './ui/WorkspaceStudio';
+import { ShortcutProvider } from './shortcuts';
 
-// Static mode (A) entry. Deliberately does not import Shell, App or any store:
-// this build must never touch /api/doctor, /api/document, /ws or the account UI.
+// Use the browser renderer and local file pickers on static hosts.
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <StaticStudio />
+    <ShortcutProvider><WorkspaceStudio /></ShortcutProvider>
   </React.StrictMode>,
 );

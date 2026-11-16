@@ -36,7 +36,7 @@ function imageData(file: File, mime: string): Promise<string> {
   });
 }
 
-export async function embedWorkspaceImages(html: string, workspace?: Workspace, documentPath = '') {
+export async function embedWorkspaceImages(html: string, workspace?: Pick<Workspace, 'read'>, documentPath = '') {
   // The renderer escapes image attributes and always emits src first.
   const imageSource = /<img src="([^"]+)"/g;
   const sources = new Set(Array.from(html.matchAll(imageSource), (match) => match[1]));

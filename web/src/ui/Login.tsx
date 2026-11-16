@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, LockKeyhole, Mail, Presentation } from 'lucide-react';
+import ProjectControls from './ProjectControls';
 
 export interface StudioUser {
   id: string;
@@ -80,6 +81,7 @@ export default function Login({ onSignedIn }: { onSignedIn: (user: StudioUser) =
           </button>
         </form>
 
+        <ProjectControls />
         <p className="auth-footnote">
           账号与数据存于本机服务端数据库（可用 <code>JC_STUDIO_DB</code> 指定位置）。
         </p>

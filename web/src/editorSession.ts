@@ -4,6 +4,7 @@ import type { ChangeDesc } from '@codemirror/state';
 import { EditorView, lineNumbers } from '@codemirror/view';
 import { minimalSetup } from 'codemirror';
 import { imageSource, livePreview } from './livePreview';
+import { mathSyntax } from './mathSyntax';
 import { blockArgument, getAttribute, scanSlideSyntax, slideDirective, updateDirective } from './slideSyntax';
 import type { BlockKind } from './slideSyntax';
 import { LocalFileStore } from './store/localFile';
@@ -90,6 +91,7 @@ export class EditorSession {
   private view: EditorView | null = null;
   private snapshot: Snapshot | null = null;
   private inflight: { changes: ChangeDesc } | null = null;
+  private saving?: Promise<boolean>;
   private timer: number | undefined;
   private destroyed = false;
   private blocked = false;
@@ -114,7 +116,7 @@ export class EditorSession {
           doc: content,
           extensions: [
             minimalSetup,
-            markdown(),
+            markdown({ extensions: [mathSyntax] }),
             EditorView.lineWrapping,
             EditorView.contentAttributes.of({ 'aria-label': 'Markdown 编辑器', spellcheck: 'false' }),
             this.mode.of(livePreview),
@@ -167,36 +169,59 @@ export class EditorSession {
     this.timer = window.setTimeout(() => void this.save(), 380);
   }
 
-  async save() {
+  documentText() {
+    return this.view?.state.doc.toString();
+  }
+
+  async flush(): Promise<boolean> {
+    while (this.view && this.snapshot && (this.saving || this.documentText() !== this.snapshot.content)) {
+      if (!(await this.save())) return false;
+    }
+    return true;
+  }
+
+  async save(): Promise<boolean> {
     window.clearTimeout(this.timer);
+    if (this.saving) return this.saving;
     const { view, snapshot } = this;
-    if (!view || !snapshot || this.inflight || this.blocked) return;
+    if (this.blocked) return false;
+    if (!view || !snapshot) return true;
     const content = view.state.doc.toString();
     if (content === snapshot.content) {
       this.callbacks.onStatus('saved');
-      return;
+      return true;
     }
+    this.saving = this.writeDocument(view, content);
+    try {
+      return await this.saving;
+    } finally {
+      this.saving = undefined;
+      this.inflight = null;
+      if (!this.destroyed && !this.blocked && view.state.doc.toString() !== content) this.scheduleSave();
+    }
+  }
+
+  private async writeDocument(view: EditorView, content: string) {
     const pending = { changes: ChangeSet.empty(content.length).desc };
     this.inflight = pending;
     this.callbacks.onStatus('saving');
     try {
       const saved = await this.store.save(content);
-      if (this.destroyed) return;
+      if (this.destroyed) return false;
       const deck = normalizeDeck(saved.ast, content);
       this.snapshot = { deck, content, changes: pending.changes };
       this.callbacks.onSave(deck);
       this.reportCursor();
       this.callbacks.onStatus(view.state.doc.toString() === content ? 'saved' : 'pending');
+      return true;
     } catch (error) {
-      if (this.destroyed) return;
+      if (this.destroyed) return false;
       console.error(error);
       // A version conflict cannot be resolved by retrying: stop the autosave
       // loop and let the user reload instead of silently overwriting.
       this.blocked = error instanceof DeckConflictError;
       this.callbacks.onStatus(this.blocked ? 'conflict' : 'save-error');
-    } finally {
-      this.inflight = null;
-      if (!this.destroyed && !this.blocked && view.state.doc.toString() !== content) this.scheduleSave();
+      return false;
     }
   }
 

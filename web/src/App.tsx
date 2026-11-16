@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
+import type { CSSProperties, KeyboardEvent, MutableRefObject, PointerEvent } from 'react';
 import {
   ArrowUpRight, Check, ChevronsUpDown, ChevronDown, ChevronLeft, ChevronRight, Code2, Columns,
-  Copy, FileText, Film, FolderUp, Image as ImageIcon, List, Monitor, PanelTop, Plus, Presentation, Save,
+  Copy, Download, FileText, Film, FolderUp, Image as ImageIcon, List, Monitor, PanelTop, Plus, Presentation, Save,
   StickyNote, Trash2, Upload, X,
 } from 'lucide-react';
 import { EditorSession } from './editorSession';
@@ -13,6 +13,10 @@ import { deckApi } from './store/remote';
 import type { DeckAsset } from './store/remote';
 import type { DeckStore } from './store/types';
 import { mediaFile } from './store/workspace';
+import { shortcutText, useShortcut, useShortcuts } from './shortcuts';
+import ProjectControls from './ui/ProjectControls';
+import { downloadText } from './render/download';
+import { exportServerDeck } from './render/serverEngine';
 import './workbench.css';
 
 export interface WorkbenchProps {
@@ -29,11 +33,14 @@ export interface WorkbenchProps {
   /** Static mode options (for GitHub Pages / pure client) */
   staticMode?: boolean;
   previewSrcDoc?: string;
+  standaloneHtml?: string;
   staticStatusText?: string;
   workspaceSelect?: React.ReactNode;
+  fileActions?: React.ReactNode;
   headerActions?: React.ReactNode;
   onPresent?: (page: number) => void;
   onDocChange?: (content: string) => void;
+  sessionRef?: MutableRefObject<EditorSession | undefined>;
 }
 
 type Pane = 'outline' | 'editor' | 'preview';
@@ -142,13 +149,16 @@ export default function App({
   userLabel,
   staticMode = false,
   previewSrcDoc,
+  standaloneHtml,
   staticStatusText,
   workspaceSelect,
+  fileActions,
   headerActions,
   onPresent,
   onDocChange,
+  sessionRef,
 }: WorkbenchProps = {}) {
-  const [file, setFile] = useState<{ source: string; fullPath: string }>();
+  const [file, setFile] = useState<{ source: string; fullPath: string; assetBase?: string }>();
   const [deck, setDeck] = useState<Deck>();
   const [status, setStatus] = useState<SaveStatus>('loading');
   const [activePage, setActivePage] = useState(1);
@@ -162,6 +172,8 @@ export default function App({
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [previewRevision, setPreviewRevision] = useState(0);
   const [scale, setScale] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   // Asset management states
   const [assetsOpen, setAssetsOpen] = useState(false);
@@ -174,11 +186,13 @@ export default function App({
   const assetFileInput = useRef<HTMLInputElement>(null);
   const assetFolderInput = useRef<HTMLInputElement>(null);
 
-  const session = useRef<EditorSession>();
+  const localSessionRef = useRef<EditorSession>();
+  const session = sessionRef ?? localSessionRef;
   const host = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
+  const connectedPreview = useRef<Document | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   const workbench = useRef<HTMLElement>(null);
   const outline = useRef<HTMLElement>(null);
@@ -187,6 +201,8 @@ export default function App({
   const byStep = useRef(false);
   const step = useRef(0);
   const drivingPreview = useRef(false);
+  const { shortcuts } = useShortcuts();
+  useShortcut('save', !staticMode && Boolean(file), () => void session.current?.save());
 
   function refreshAssetPreviews() {
     const revision = ++nextAssetRevision.current;
@@ -246,12 +262,6 @@ export default function App({
     }
     if (!staticMode) connect();
 
-    function saveShortcut(event: globalThis.KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-        event.preventDefault();
-        void editor.save();
-      }
-    }
     function onPreviewMessage(event: MessageEvent<PreviewClick & { type?: string }>) {
       if (event.source !== frame.current?.contentWindow) return;
       if (!staticMode && event.origin !== location.origin) return;
@@ -282,18 +292,35 @@ export default function App({
     }
 
     window.addEventListener('paste', onPaste);
-    window.addEventListener('keydown', saveShortcut);
     window.addEventListener('message', onPreviewMessage);
     return () => {
       disposed = true;
       window.clearTimeout(reconnect);
       socket?.close();
       window.removeEventListener('paste', onPaste);
-      window.removeEventListener('keydown', saveShortcut);
       window.removeEventListener('message', onPreviewMessage);
       editor.destroy();
+      if (session.current === editor) session.current = undefined;
     };
   }, [deckId]);
+
+  async function exportHtml() {
+    const content = session.current?.documentText();
+    if (!file || content === undefined || exporting) return;
+    setExporting(true);
+    setExportError('');
+    try {
+      const html = staticMode ? standaloneHtml : await exportServerDeck(content, file.assetBase);
+      if (html !== undefined) {
+        const name = file.source.replace(/\.(?:md|markdown|txt)$/i, '') || 'deck';
+        downloadText(`${name}.html`, html, 'text/html;charset=utf-8');
+      }
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : '无法生成 HTML');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function loadAssets() {
     if (!deckId) return;
@@ -403,18 +430,36 @@ export default function App({
 
   function onPreviewLoad() {
     const document = frame.current?.contentDocument;
-    if (!player(frame.current)) {
+    if (!document || !player(frame.current)) {
       setPlayerState(null);
       return;
     }
+    if (connectedPreview.current === document) return;
+    connectedPreview.current = document;
     drivePreview(active.current, true);
-    document?.addEventListener('deck-state', (event) => {
+    document.addEventListener('deck-state', (event) => {
       const next = (event as CustomEvent<PlayerState>).detail;
       setPlayerState(next);
       if (byStep.current) step.current = next.step;
       if (!drivingPreview.current && next.page !== active.current) session.current?.selectSlide(next.page);
     });
   }
+
+  useEffect(() => {
+    if (!file || staticMode) return;
+    // Fonts and remote images can hold the iframe's load event after the player is ready.
+    const deadline = performance.now() + 10_000;
+    const timer = window.setInterval(() => {
+      const iframe = frame.current;
+      if (iframe?.contentDocument?.URL.split('#')[0] === iframe?.src.split('#')[0] && player(iframe)) {
+        onPreviewLoad();
+        window.clearInterval(timer);
+      } else if (performance.now() >= deadline) {
+        window.clearInterval(timer);
+      }
+    }, 60);
+    return () => window.clearInterval(timer);
+  }, [file, staticMode, previewUrl, previewRevision, assetRevision]);
 
   function toggleStepped() {
     byStep.current = !byStep.current;
@@ -489,9 +534,10 @@ export default function App({
 
   return (
     <div className="studio">
-      <header className="app-bar">
+      <header className={`app-bar${staticMode ? ' app-bar-static' : ''}`}>
         <div className="brand"><span className="brand-mark"><Presentation size={19} strokeWidth={1.8} /></span>
           <span>Slide Studio</span></div>
+        {fileActions}
         <div className="open-file" title={file?.fullPath}><FileText size={16} />
           <span id="fileNameDisplay">{file?.source ?? (status === 'load-error' ? '未加载文件' : '正在打开稿件…')}</span>
         </div>
@@ -502,11 +548,12 @@ export default function App({
             <ChevronLeft size={16} /><span>幻灯片库</span>
           </button>}
           {userLabel && <span className="user-chip" title={userLabel}>{userLabel}</span>}
-          <span id="saveStatus" className={`save-status ${staticMode ? 'studio-status' : ''}`} data-state={status} role="status">
+          <span id="saveStatus" className={`save-status ${staticMode ? 'studio-status' : ''}`} data-state={status}
+            role="status" title={staticStatusText}>
             {staticStatusText || statusLabels[status]}
           </span>
           {!staticMode && (
-            <button type="button" className="button save-button" aria-label="保存" title="保存（Ctrl/⌘ + S）"
+            <button type="button" className="button save-button" aria-label="保存" title={`保存（${shortcutText(shortcuts.save)}）`}
               disabled={!file || status === 'saving'} onClick={() => void session.current?.save()}>
               <Save size={16} /><span>保存</span>
             </button>
@@ -521,6 +568,10 @@ export default function App({
               <ImageIcon size={16} /><span>图片</span>
             </button>
           )}
+          <button type="button" className="button" disabled={!file || exporting || (staticMode && !standaloneHtml)}
+            onClick={() => void exportHtml()} title="下载单独的 HTML 演示文件">
+            <Download size={16} /><span>{exporting ? '正在导出…' : '导出 HTML'}</span>
+          </button>
           {onPresent ? (
             <button type="button" className="button present-button" onClick={() => onPresent(activePage)} title="全屏演示当前幻灯片">
               <Monitor size={16} /><span>演示</span><ArrowUpRight className="external-icon" size={13} />
@@ -531,7 +582,9 @@ export default function App({
             </a>
           )}
         </div>
+        <ProjectControls />
       </header>
+      {exportError && <p className="export-error" role="alert">导出失败：{exportError}</p>}
 
       <nav className="mobile-panes" aria-label="工作区">
         {([{ id: 'outline', label: '大纲', Icon: List }, { id: 'editor', label: '编辑', Icon: FileText },

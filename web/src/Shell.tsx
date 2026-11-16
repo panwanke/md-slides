@@ -4,6 +4,7 @@ import { RemoteDeckStore } from './store/remote';
 import Login from './ui/Login';
 import type { StudioUser } from './ui/Login';
 import Library from './ui/Library';
+import WorkspaceStudio from './ui/WorkspaceStudio';
 import './ui/shell.css';
 
 type Mode = 'checking' | 'local' | 'library';
@@ -82,7 +83,7 @@ export default function Shell() {
   }
 
   if (mode === 'checking') return <div className="boot-screen">正在检查运行模式…</div>;
-  if (mode === 'local') return <Workbench />;
+  if (mode === 'local') return <WorkspaceStudio bound />;
   if (!user) return <Login onSignedIn={signedIn} />;
 
   if (deckId !== null && store) {

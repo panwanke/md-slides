@@ -7,7 +7,6 @@ export interface RenderResult {
   slideCount: number;
   title: string;
   theme: string;
-  ast: Deck;
 }
 
 interface PyodideLike {
@@ -66,13 +65,12 @@ from md_slide_studio.document.parser import build_document_ast
 from md_slide_studio.render.engine import render_text
 
 def md_render(content, theme):
-    html, info = render_text(content, theme=theme or None)
+    html, info = render_text(content, theme=theme or None, standalone=True)
     return json.dumps({
         'html': html,
         'slideCount': info['slideCount'],
         'title': info['title'],
         'theme': info['theme'],
-        'ast': build_document_ast(content),
     })
 
 jc_render = md_render

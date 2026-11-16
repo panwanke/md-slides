@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  FileText, FolderOpen, FolderUp, GraduationCap, LogOut, Pencil, Plus, Presentation,
+  FileText, FolderOpen, GraduationCap, LogOut, Pencil, Plus, Presentation,
   Rocket, Search, Sparkles, Trash2, Upload, X,
 } from 'lucide-react';
 import { deckApi } from '../store/remote';
 import type { DeckMeta, RevisionMeta } from '../store/remote';
 import { folderPath, markdownFile, mediaFile } from '../store/workspace';
 import type { StudioUser } from './Login';
+import { shortcutText, useShortcut, useShortcuts } from '../shortcuts';
+import ProjectControls from './ProjectControls';
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -77,6 +79,10 @@ export default function Library({
 
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
+  const { shortcuts } = useShortcuts();
+  const canImport = !busy && !createModalOpen && !renameModalDeck && !deleteTarget && !revisions;
+  useShortcut('openMarkdown', canImport, () => fileInput.current?.click());
+  useShortcut('openWorkspace', canImport, () => folderInput.current?.click());
 
   async function refresh() {
     try {
@@ -104,19 +110,6 @@ export default function Library({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
-
-  async function run(action: () => Promise<unknown>) {
-    setBusy(true);
-    setError('');
-    try {
-      await action();
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '操作失败');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function openCreate() {
     setSelectedTemplate('academic');
@@ -196,17 +189,24 @@ export default function Library({
 
   async function importFiles(list: FileList | null) {
     if (!list?.length) return;
-    const files = await Promise.all(
-      Array.from(list)
-        .filter((file) => markdownFile.test(file.name))
-        .map(async (file) => ({ name: file.name, content: await file.text() })),
-    );
+    const files = Array.from(list).filter((file) => markdownFile.test(file.name));
+    if (fileInput.current) fileInput.current.value = '';
     if (!files.length) {
       setError('请选择 .md / .markdown / .txt 文件');
       return;
     }
-    await run(() => deckApi.importFiles(files));
-    if (fileInput.current) fileInput.current.value = '';
+    setBusy(true);
+    setError('');
+    try {
+      const payload = await Promise.all(files.map(async (file) => ({ name: file.name, content: await file.text() })));
+      const { decks } = await deckApi.importFiles(payload);
+      if (decks.length === 1) location.hash = `#/deck/${decks[0].id}`;
+      else await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Markdown 导入失败');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function importFolder(list: FileList | null) {
@@ -272,6 +272,7 @@ export default function Library({
         <div className="brand"><span className="brand-mark"><Presentation size={19} strokeWidth={1.8} /></span>
           <span>Slide Studio</span></div>
         <div className="library-account">
+          <ProjectControls />
           <span title={user.email}>{user.displayName || user.email}</span>
           <button type="button" className="button" onClick={onSignOut} title="退出登录">
             <LogOut size={15} /> 退出
@@ -292,12 +293,14 @@ export default function Library({
               {...({ webkitdirectory: '', directory: '' } as unknown as object)}
               hidden onChange={(e) => void importFolder(e.target.files)} />
             <button type="button" className="button" disabled={busy}
-              onClick={() => fileInput.current?.click()} title="导入单个或多个 .md 文件">
+              onClick={() => fileInput.current?.click()}
+              title={`导入单个或多个 Markdown 文件（${shortcutText(shortcuts.openMarkdown)}）`}>
               <Upload size={16} /> 导入 .md
             </button>
-            <button type="button" className="button" disabled={busy}
-              onClick={() => folderInput.current?.click()} title="导入包含 .md 与本地图片的文件夹">
-              <FolderUp size={16} /> 导入文件夹 (含图片)
+            <button type="button" className="button open-workspace" disabled={busy}
+              onClick={() => folderInput.current?.click()}
+              title={`导入文件夹内的 Markdown 和图片到演示稿库（${shortcutText(shortcuts.openWorkspace)}）`}>
+              <FolderOpen size={16} /> 打开工作文件夹
             </button>
             <button type="button" className="button library-primary" disabled={busy} onClick={openCreate}>
               <Plus size={16} /> 新建演示稿
@@ -324,9 +327,6 @@ export default function Library({
                   </button>
                   <button type="button" className="button" onClick={() => fileInput.current?.click()} disabled={busy}>
                     <Upload size={16} /> 导入 .md
-                  </button>
-                  <button type="button" className="button" onClick={() => folderInput.current?.click()} disabled={busy}>
-                    <FolderUp size={16} /> 导入文件夹 (含图片)
                   </button>
                 </div>
               )}
