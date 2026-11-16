@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="docs/images/icon.svg" width="128" height="128" alt="jc-slide-studio logo" />
+  <img src="docs/images/icon.svg" width="128" height="128" alt="md-slide-studio logo" />
 </p>
 
-# jc-slide-studio
+# md-slide-studio
 
 > [中文版](README_zh.md) | [Live Demo](https://panwanke.github.io/md-slides/)
 
-jc-slide-studio (md-slides) is a standalone Markdown academic slide workbench and offline rendering engine featuring real-time CodeMirror 6 live editing, bidirectional source mapping, and instant HTML presentation generation.
+md-slide-studio (md-slides) is a standalone Markdown academic slide workbench and offline rendering engine featuring real-time CodeMirror 6 live editing, bidirectional source mapping, and instant HTML presentation generation.
 
-![jc-slide-studio Workbench Live Preview](docs/images/workbench-live-preview.png)
+![md-slide-studio Workbench Live Preview](docs/images/workbench-live-preview.png)
 
 ## Overview
 
-jc-slide-studio decouples presentation authoring from external agent environments into a clean, standalone toolchain. It provides an intuitive desktop/browser-based workspace designed specifically for academic and technical presentations.
+md-slide-studio decouples presentation authoring from external agent environments into a clean, standalone toolchain. It provides an intuitive desktop/browser-based workspace designed specifically for academic and technical presentations.
 
 Key views and workflows include:
 - **Interactive Workbench**: A three-pane layout featuring an Accordion Section Navigator, a CodeMirror 6 live-editing Markdown workspace with visual block widgets, and an instant slide preview iframe.
@@ -24,12 +24,12 @@ Key views and workflows include:
 
 | Command | Description |
 |---------|-------------|
-| `jc-slide-studio doctor` | Check environment, dependencies, and font assets health status |
-| `jc-slide-studio check <deck.md>` | Validate Markdown syntax, slide delimiters, frontmatter, and assets |
-| `jc-slide-studio render <deck.md> --out <DIR>` | Compile Markdown into a standalone offline HTML presentation |
-| `jc-slide-studio edit <deck.md>` | Launch the interactive local studio workbench |
-| `jc-slide-studio preview <deck.md>` | Launch a lightweight live-reloading presentation preview server |
-| `jc-slide-studio serve` | Start the account-based deck library (server-side storage, no bound file) |
+| `md-slide-studio doctor` | Check environment, dependencies, and font assets health status |
+| `md-slide-studio check <deck.md>` | Validate Markdown syntax, slide delimiters, frontmatter, and assets |
+| `md-slide-studio render <deck.md> --out <DIR>` | Compile Markdown into a standalone offline HTML presentation |
+| `md-slide-studio edit <deck.md>` | Launch the interactive local studio workbench |
+| `md-slide-studio preview <deck.md>` | Launch a lightweight live-reloading presentation preview server |
+| `md-slide-studio serve` | Start the account-based deck library (server-side storage, no bound file) |
 
 ### GitHub Pages workspace
 
@@ -47,9 +47,9 @@ To add images after import, use the **Images** (图片) panel in the deck editor
 Uploads are stored under `assets/` in the studio data directory.
 
 ```bash
-jc-slide-studio serve --port 9000
-# Database: ~/.jc-slide-studio/studio.db
-# Override with JC_STUDIO_DB=/path/to/studio.db or JC_STUDIO_DATA_DIR=/path/to/dir
+md-slide-studio serve --port 9000
+# Database: ~/.md-slide-studio/studio.db
+# Override with MD_STUDIO_DB=/path/to/studio.db or MD_STUDIO_DATA_DIR=/path/to/dir
 ```
 
 The API contract is documented in [docs/protocol.md](docs/protocol.md).
@@ -74,20 +74,20 @@ pip install -e ".[dev]"
 
 ```bash
 # Check environment health
-jc-slide-studio doctor
+md-slide-studio doctor
 
 # Launch the interactive live-editing workbench
-jc-slide-studio edit sample.md
+md-slide-studio edit sample.md
 
 # Render deck to a standalone HTML file
-jc-slide-studio render sample.md --out ./dist
+md-slide-studio render sample.md --out ./dist
 ```
 
 In the studio workbench, live preview is enabled by default. Switch to "Source" to edit raw Markdown tokens, use "Insert Block" to insert callouts, cards, or step-by-step animations, check animation order in "Fragments", and click "Present" to open a presentation window from the current slide.
 
 ### Frontend Development (Optional)
 
-The prebuilt frontend distribution is embedded in the Python package (`src/jc_slide_studio/web_dist`). If you want to modify or develop the React studio UI:
+The prebuilt frontend distribution is embedded in the Python package (`src/md_slide_studio/web_dist`). If you want to modify or develop the React studio UI:
 
 ```bash
 cd web

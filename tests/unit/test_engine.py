@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from jc_slide_studio.render.engine import render_deck
+from md_slide_studio.render.engine import render_deck
 
 
 def test_render_deck_unbundled():

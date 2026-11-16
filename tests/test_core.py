@@ -1,11 +1,11 @@
 from pathlib import Path
-from jc_slide_studio.document.parser import (
+from md_slide_studio.document.parser import (
     build_document_ast,
     update_slide_layout,
     apply_source_patch,
     apply_node_patch,
 )
-from jc_slide_studio.render.engine import render_deck
+from md_slide_studio.render.engine import render_deck
 
 
 def test_build_document_ast():

@@ -979,7 +979,7 @@
     window.addEventListener('hashchange', fromHash);
     fromHash();
     go(idx);
-    window.JCDeck = {
+    window.MDDeck = window.JCDeck = {
       getState: state,
       getManifest: () => JSON.parse(document.getElementById('deck-manifest')?.textContent || '{}'),
       goTo: (page, step = 0) => { go(Math.max(0, Number(page) - 1), false, step); return state(); },

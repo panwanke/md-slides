@@ -7,7 +7,7 @@ import re
 from typing import Any, Dict, List
 from urllib.parse import unquote, urlsplit
 
-from jc_slide_studio.document.parser import (
+from md_slide_studio.document.parser import (
     IMAGE_MARKDOWN,
     parse_front_matter,
     strip_workspace,
@@ -52,8 +52,16 @@ def check_slide_deck(source_path: Path | str, *, strict: bool = False) -> Dict[s
 
     slides = split_slides_with_ranges(slides_body)
     used_ids = set()
-    jc_meta = meta.get("jc") if isinstance(meta.get("jc"), dict) else {}
-    lang = str(jc_meta.get("lang") or meta.get("lang") or "zh").lower()
+    deck_meta = (
+        meta.get("md_slide")
+        if isinstance(meta.get("md_slide"), dict)
+        else meta.get("slides")
+        if isinstance(meta.get("slides"), dict)
+        else meta.get("jc")
+        if isinstance(meta.get("jc"), dict)
+        else {}
+    )
+    lang = str(deck_meta.get("lang") or meta.get("lang") or "zh").lower()
     lo, hi, unit = (80, 320, "words") if lang == "en" else (100, 400, "characters")
     note_re = re.compile(r"^:::\s*notes\b[^\n]*\n([\s\S]*?)^:::\s*$", re.M)
 

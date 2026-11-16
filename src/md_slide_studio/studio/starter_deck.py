@@ -1,4 +1,4 @@
-"""Built-in showcase deck and starter templates for jc-slide-studio."""
+"""Built-in showcase deck and starter templates for md-slide-studio."""
 
 from __future__ import annotations
 from typing import Dict
@@ -6,21 +6,21 @@ from typing import Dict
 SHOWCASE_TITLE = "Markdown ⇄ HTML 演示全景"
 
 SHOWCASE_CONTENT = """---
-jc:
+md_slide:
   title: "Markdown ⇄ HTML"
   title_zh: "从极简书写到交互成片：演示稿的解耦与重构"
   kicker: "官方演示 · 快速上手与功能全景"
   theme: academic-paper
   themes: "academic-paper,minimal-white,sunset-warm,catppuccin-mocha,editorial-serif,nord"
   lang: zh
-  footer: "jc-slide-studio · Markdown Slide Engine"
+  footer: "md-slide-studio · Markdown Slide Engine"
 ---
 
 <!-- slides:start -->
 <!-- slide: layout=cover -->
 
 ::: notes
-欢迎体验 jc-slide-studio 在线演示稿。按方向键或空格键切页，按 N 键查看演讲者备注。
+欢迎体验 md-slide-studio 在线演示稿。按方向键或空格键切页，按 N 键查看演讲者备注。
 :::
 
 ---
@@ -116,7 +116,7 @@ $$f(x \\mid \\mu, \\sigma^2) = \\frac{1}{\\sqrt{2\\pi\\sigma^2}} \\exp\\left( -\
 ::: box 极简语法的力量
 - 无需繁重的闭合 HTML 标签
 - 单个 `+++` 即可实现响应式双栏排版
-- 单命令一键编译打包：`jc-slide-studio render deck.md --out ./dist`
+- 单命令一键编译打包：`md-slide-studio render deck.md --out ./dist`
 :::
 
 ---
@@ -139,7 +139,7 @@ TEMPLATES: Dict[str, Dict[str, str]] = {
         "title": "学术组会与论文汇报",
         "description": "研究背景、理论模型、实验结果与研讨展望的标准化结构",
         "content": """---
-jc:
+md_slide:
   title: "学术研究与课题汇报"
   title_zh: "核心机制解析与实证结果讨论"
   theme: academic-paper
@@ -191,7 +191,7 @@ jc:
         "title": "产品方案与商业 Pitch",
         "description": "聚焦用户痛点、产品价值、核心优势与落地路线图",
         "content": """---
-jc:
+md_slide:
   title: "新一代智能协作产品"
   kicker: "PRODUCT PITCH DECK"
   theme: minimal-white
@@ -232,7 +232,7 @@ jc:
         "title": "空白演示稿",
         "description": "干净的初始画布，包含标准封面与内容页",
         "content": """---
-jc:
+md_slide:
   title: "未命名演示稿"
   theme: academic-paper
   lang: zh

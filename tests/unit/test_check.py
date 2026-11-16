@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from jc_slide_studio.document.check import check_slide_deck
+from md_slide_studio.document.check import check_slide_deck
 
 
 def test_check_valid_fixture():

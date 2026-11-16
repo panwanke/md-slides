@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="docs/images/icon.svg" width="128" height="128" alt="jc-slide-studio 图标" />
+  <img src="docs/images/icon.svg" width="128" height="128" alt="md-slide-studio 图标" />
 </p>
 
-# jc-slide-studio
+# md-slide-studio
 
 > [English](README.md) | [在线演示](https://panwanke.github.io/md-slides/)
 
-jc-slide-studio (md-slides) 是专为学术研究汇报与复杂演示稿设计的 Markdown 幻灯片工作台与独立离线渲染引擎。提供 CodeMirror 6 实时编辑排版、源码与成片双向定位、多栏拖拽及开箱即用的离线 HTML 演示打包。
+md-slide-studio (md-slides) 是专为学术研究汇报与复杂演示稿设计的 Markdown 幻灯片工作台与独立离线渲染引擎。提供 CodeMirror 6 实时编辑排版、源码与成片双向定位、多栏拖拽及开箱即用的离线 HTML 演示打包。
 
-![jc-slide-studio 工作台实时预览界面](docs/images/workbench-live-preview.png)
+![md-slide-studio 工作台实时预览界面](docs/images/workbench-live-preview.png)
 
 ## 概述
 
-jc-slide-studio 将幻灯片制作与 Agent 环境完全解耦，提供独立的 Python 与 Web 完整工具链，专为学术演讲、开题答辩、论文分享与技术汇报设计。
+md-slide-studio 将幻灯片制作与 Agent 环境完全解耦，提供独立的 Python 与 Web 完整工具链，专为学术演讲、开题答辩、论文分享与技术汇报设计。
 
 主要面板与工作流包括：
 - **交互式工作台**：三栏式布局，包含手风琴式分节导航大纲、集成专有标记可视化卡片的 CodeMirror 6 实时编辑区，以及即时成片预览 iframe。
@@ -24,12 +24,12 @@ jc-slide-studio 将幻灯片制作与 Agent 环境完全解耦，提供独立的
 
 | 命令 | 功能说明 |
 |---|---|
-| `jc-slide-studio doctor` | 检查本地环境、Python 依赖与字体资产健康状态 |
-| `jc-slide-studio check <deck.md>` | 静态校验 Markdown 语法、分页分隔符、元数据与静态资源 |
-| `jc-slide-studio render <deck.md> --out <DIR>` | 将 Markdown 编译为完全自包含的独立离线 HTML 演示稿 |
-| `jc-slide-studio edit <deck.md>` | 启动本地交互式编辑工作台 |
-| `jc-slide-studio preview <deck.md>` | 启动轻量热重载预览服务器 |
-| `jc-slide-studio serve` | 启动带账号系统的幻灯片库（数据存于服务端） |
+| `md-slide-studio doctor` | 检查本地环境、Python 依赖与字体资产健康状态 |
+| `md-slide-studio check <deck.md>` | 静态校验 Markdown 语法、分页分隔符、元数据与静态资源 |
+| `md-slide-studio render <deck.md> --out <DIR>` | 将 Markdown 编译为完全自包含的独立离线 HTML 演示稿 |
+| `md-slide-studio edit <deck.md>` | 启动本地交互式编辑工作台 |
+| `md-slide-studio preview <deck.md>` | 启动轻量热重载预览服务器 |
+| `md-slide-studio serve` | 启动带账号系统的幻灯片库（数据存于服务端） |
 
 ### GitHub Pages 工作文件夹
 
@@ -44,9 +44,9 @@ jc-slide-studio 将幻灯片制作与 Agent 环境完全解耦，提供独立的
 可一次导入多个本地 `.md`。用「导入文件夹（含图片）」一起上传 Markdown 和图片，可保留目录结构与相对引用。进入演示稿后，也可在「图片」面板追加上传并插入 Markdown 引用。
 
 ```bash
-jc-slide-studio serve --port 9000
-# 数据库默认：~/.jc-slide-studio/studio.db
-# 可用 JC_STUDIO_DB=/path/to/studio.db 或 JC_STUDIO_DATA_DIR=/path/to/dir 改位置
+md-slide-studio serve --port 9000
+# 数据库默认：~/.md-slide-studio/studio.db
+# 可用 MD_STUDIO_DB=/path/to/studio.db 或 MD_STUDIO_DATA_DIR=/path/to/dir 改位置
 ```
 
 接口契约见 [docs/protocol.md](docs/protocol.md)。
@@ -71,20 +71,20 @@ pip install -e ".[dev]"
 
 ```bash
 # 环境健康体检
-jc-slide-studio doctor
+md-slide-studio doctor
 
 # 启动本地实时编辑工作台
-jc-slide-studio edit sample.md
+md-slide-studio edit sample.md
 
 # 编译为单文件离线 HTML
-jc-slide-studio render sample.md --out ./dist
+md-slide-studio render sample.md --out ./dist
 ```
 
 工作台默认打开「实时」编辑排版模式。点「源码」可编辑原始 Markdown 标记；讲稿、重点卡片与分步动画可直接通过顶部「插入块」添加；右侧「分步」面板用于查看和调整动画播放顺序；顶栏「演示」按钮可从当前页全屏打开独立播放窗口。
 
 ### 前端开发（可选）
 
-工作台编译后的前端静态资源已内置于 Python 包（`src/jc_slide_studio/web_dist`）。如需二次开发 React 前端：
+工作台编译后的前端静态资源已内置于 Python 包（`src/md_slide_studio/web_dist`）。如需二次开发 React 前端：
 
 ```bash
 cd web

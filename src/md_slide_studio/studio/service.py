@@ -12,8 +12,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from jc_slide_studio.studio.db import connect, now
-from jc_slide_studio.studio.security import (
+from md_slide_studio.studio.db import connect, now
+from md_slide_studio.studio.security import (
     hash_password,
     new_session_token,
     token_hash,
@@ -34,7 +34,7 @@ class ConflictError(StudioError):
 
 
 def _count_slides(content: str) -> int:
-    from jc_slide_studio.document.parser import (
+    from md_slide_studio.document.parser import (
         parse_front_matter,
         split_slides_with_ranges,
         strip_workspace,
@@ -93,7 +93,7 @@ def create_user(email: str, password: str, display_name: str | None = None) -> D
     except sqlite3.IntegrityError as error:
         raise ValueError("该邮箱已注册") from error
 
-    from jc_slide_studio.studio.starter_deck import SHOWCASE_TITLE, SHOWCASE_CONTENT
+    from md_slide_studio.studio.starter_deck import SHOWCASE_TITLE, SHOWCASE_CONTENT
     create_deck(user_id, SHOWCASE_TITLE, SHOWCASE_CONTENT)
 
     return _public_user(row)

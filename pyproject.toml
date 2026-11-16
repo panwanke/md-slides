@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "jc-slide-studio"
+name = "md-slide-studio"
 version = "0.1.0"
 description = "Markdown slide studio and standalone rendering engine"
 readme = "README.md"
@@ -33,10 +33,10 @@ dev = [
 ]
 
 [project.scripts]
-jc-slide-studio = "jc_slide_studio.cli:main"
+md-slide-studio = "md_slide_studio.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/jc_slide_studio"]
+packages = ["src/md_slide_studio"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

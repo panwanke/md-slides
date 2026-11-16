@@ -1,19 +1,19 @@
 ---
-jc:
+md_slide:
   title: "Markdown ⇄ HTML"
   title_zh: "从极简书写到交互成片：演示稿的解耦与重构"
   kicker: "通用演示 · Concept & Architecture"
   theme: academic-paper
   themes: "academic-paper,minimal-white,sunset-warm,catppuccin-mocha,editorial-serif,nord"
   lang: zh
-  footer: "jc-slide-studio · Markdown Slide Engine"
+  footer: "md-slide-studio · Markdown Slide Engine"
 ---
 
 <!-- slides:start -->
 <!-- slide: layout=cover -->
 
 ::: notes
-欢迎体验 jc-slide-studio 在线演示稿。按方向键或空格键切页，按 N 键查看演讲者备注。
+欢迎体验 md-slide-studio 在线演示稿。按方向键或空格键切页，按 N 键查看演讲者备注。
 :::
 
 ---
@@ -109,7 +109,7 @@ $$f(x \mid \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(x -
 ::: box 极简语法的力量
 - 无需繁重的闭合 HTML 标签
 - 单个 `+++` 即可实现响应式双栏排版
-- 单命令一键编译打包：`jc-slide-studio render deck.md --out ./dist`
+- 单命令一键编译打包：`md-slide-studio render deck.md --out ./dist`
 :::
 
 ---

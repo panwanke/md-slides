@@ -9,7 +9,7 @@ import pytest
 import uvicorn
 from playwright.sync_api import expect, sync_playwright
 
-from jc_slide_studio.server.app import app, state
+from md_slide_studio.server.app import app, state
 
 
 @pytest.fixture

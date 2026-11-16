@@ -1,5 +1,5 @@
 import pytest
-from jc_slide_studio.document.parser import (
+from md_slide_studio.document.parser import (
     build_document_ast,
     apply_source_patch,
     apply_node_patch,

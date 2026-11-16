@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from jc_slide_studio.document.parser import (
+from md_slide_studio.document.parser import (
     parse_front_matter,
     strip_workspace,
     split_slides_with_ranges,

@@ -8,7 +8,7 @@ import re
 import textwrap
 from typing import Any, Dict, List, Optional, Tuple
 
-from jc_slide_studio.document.parser import (
+from md_slide_studio.document.parser import (
     IMAGE_MARKDOWN,
     parse_front_matter,
     strip_workspace,
@@ -16,9 +16,9 @@ from jc_slide_studio.document.parser import (
     parse_slide_meta,
     stable_slide_id,
 )
-from jc_slide_studio.providers.assets import default_provider
-from jc_slide_studio.render.delivery import atomic_write, package_document, OFFLINE_FONTS
-from jc_slide_studio.render.navigation import collect_chapters, render_navigation, render_toc
+from md_slide_studio.providers.assets import default_provider
+from md_slide_studio.render.delivery import atomic_write, package_document, OFFLINE_FONTS
+from md_slide_studio.render.navigation import collect_chapters, render_navigation, render_toc
 
 CSS = """
 /* ---- jc-slide-studio scoped styles ---- */
@@ -432,7 +432,8 @@ def infer_layout(blocks: List[Dict[str, Any]]) -> str:
 
 
 def render_layout(layout: str, body: List[Dict[str, Any]], meta: Dict[str, Any], navigation: Any = None, slide_index: int = 1) -> str:
-    jc = meta.get("jc") if isinstance(meta.get("jc"), dict) else meta
+    sub = meta.get("md_slide") or meta.get("slides") or meta.get("jc")
+    jc = sub if isinstance(sub, dict) else meta
     g = lambda k, d="": (jc.get(k) or d) if isinstance(jc, dict) else d
 
     if layout == "cover":
@@ -544,8 +545,12 @@ def render_slide(raw_slide: str, meta: Dict[str, Any], idx: int, total: int, nav
         body = [b for b in blocks if not (b["type"] == "container" and b["kind"] == "notes")]
         inner = render_layout(layout, body, meta, navigation, idx)
 
+    deck_sub = meta.get("md_slide") or meta.get("slides") or meta.get("jc") or {}
+    if not isinstance(deck_sub, dict):
+        deck_sub = {}
+
     if layout == "cover":
-        title = meta.get("jc", {}).get("title") or meta.get("title") or "Untitled"
+        title = deck_sub.get("title") or meta.get("title") or "Untitled"
     else:
         title = next((b["text"] for b in body if b["type"] == "heading"), "")
     dtitle = smeta.get("title") or title or f"Slide {idx}"
@@ -587,13 +592,13 @@ def render_slide(raw_slide: str, meta: Dict[str, Any], idx: int, total: int, nav
         inner_html = "".join(render_blocks(parse_blocks(b["content"])) for b in notes_blocks)
         notes_html = f'<aside class="notes">{inner_html}</aside>'
 
-    footer_text = meta.get("jc", {}).get("footer") or meta.get("jc", {}).get("presenter") or meta.get("presenter") or "Journal Club"
+    footer_text = deck_sub.get("footer") or deck_sub.get("presenter") or meta.get("presenter") or "md-slides"
     footer = (
         f'<div class="deck-footer"><span>{html.escape(footer_text)}</span>'
         f'<span class="slide-number" data-current="{idx}" data-total="{total}"></span></div>'
     )
 
-    chapter_bar = render_navigation(navigation, idx, meta.get("jc", {}).get("lang", "zh")) if navigation else ""
+    chapter_bar = render_navigation(navigation, idx, deck_sub.get("lang") or meta.get("lang") or "zh") if navigation else ""
 
     slide_html = (
         f'<section {" ".join(attrs)}>\n'
@@ -637,8 +642,11 @@ def render_text(
         rendered_slides.append(s_html)
 
     # Theme selection
-    chosen_theme = theme or meta.get("jc", {}).get("theme") or meta.get("theme") or "academic-paper"
-    title = meta.get("jc", {}).get("title") or meta.get("title") or stem
+    deck_sub = meta.get("md_slide") or meta.get("slides") or meta.get("jc") or {}
+    if not isinstance(deck_sub, dict):
+        deck_sub = {}
+    chosen_theme = theme or deck_sub.get("theme") or meta.get("theme") or "academic-paper"
+    title = deck_sub.get("title") or meta.get("title") or stem
     theme_css = default_provider.get_theme_css(chosen_theme)
     base_css = default_provider.get_base_css()
     fonts_css = default_provider.get_fonts_css()
@@ -649,7 +657,7 @@ def render_text(
     nav_js = nav_js.replace("</script", "<\\/script")
 
     head = HEAD_TEMPLATE.format(
-        lang=meta.get("jc", {}).get("lang") or meta.get("lang") or "zh",
+        lang=deck_sub.get("lang") or meta.get("lang") or "zh",
         title=title,
         favicon_tag=default_provider.get_favicon_tag(),
         fonts_css=fonts_css or OFFLINE_FONTS,

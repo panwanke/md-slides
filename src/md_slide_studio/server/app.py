@@ -11,14 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from jc_slide_studio import __protocol_version__, __version__
-from jc_slide_studio.document.parser import build_document_ast, apply_source_patch, apply_node_patch
-from jc_slide_studio.providers.assets import default_provider
-from jc_slide_studio.render.engine import render_deck, render_text
-from jc_slide_studio.server.preview_scripts import HOT_RELOAD_SCRIPT
-from jc_slide_studio.server.api import router as studio_router
+from md_slide_studio import __protocol_version__, __version__
+from md_slide_studio.document.parser import build_document_ast, apply_source_patch, apply_node_patch
+from md_slide_studio.providers.assets import default_provider
+from md_slide_studio.render.engine import render_deck, render_text
+from md_slide_studio.server.preview_scripts import HOT_RELOAD_SCRIPT
+from md_slide_studio.server.api import router as studio_router
 
-app = FastAPI(title="jc-slide-studio", version=__version__)
+app = FastAPI(title="md-slide-studio", version=__version__)
 app.include_router(studio_router)
 
 app.add_middleware(

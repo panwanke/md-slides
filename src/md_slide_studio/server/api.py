@@ -17,11 +17,11 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from starlette.datastructures import UploadFile
 
-from jc_slide_studio.document.parser import build_document_ast
-from jc_slide_studio.render.engine import render_text
-from jc_slide_studio.server.preview_scripts import CLICK_MAP_SCRIPT, EMBEDDED_STYLE
-from jc_slide_studio.studio import assets
-from jc_slide_studio.studio import service
+from md_slide_studio.document.parser import build_document_ast
+from md_slide_studio.render.engine import render_text
+from md_slide_studio.server.preview_scripts import CLICK_MAP_SCRIPT, EMBEDDED_STYLE
+from md_slide_studio.studio import assets
+from md_slide_studio.studio import service
 
 router = APIRouter(prefix="/api")
 
@@ -114,7 +114,7 @@ def me(user: Dict[str, Any] = Depends(current_user)):
 
 @router.get("/templates")
 def list_templates():
-    from jc_slide_studio.studio.starter_deck import TEMPLATES
+    from md_slide_studio.studio.starter_deck import TEMPLATES
     return {
         "ok": True,
         "templates": [
@@ -136,7 +136,7 @@ def list_decks(user: Dict[str, Any] = Depends(current_user)):
 
 @router.post("/decks", status_code=201)
 def create_deck(payload: DeckCreate, user: Dict[str, Any] = Depends(current_user)):
-    from jc_slide_studio.studio.starter_deck import TEMPLATES
+    from md_slide_studio.studio.starter_deck import TEMPLATES
     content = payload.content
     title = payload.title
     if content is None:

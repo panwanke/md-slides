@@ -1,4 +1,4 @@
-"""Command Line Interface for jc-slide-studio."""
+"""Command Line Interface for md-slide-studio."""
 
 from __future__ import annotations
 
@@ -8,17 +8,17 @@ import sys
 import webbrowser
 import click
 
-from jc_slide_studio import __protocol_version__, __version__
-from jc_slide_studio.document.check import check_slide_deck
-from jc_slide_studio.providers.assets import default_provider
-from jc_slide_studio.render.engine import render_deck
-from jc_slide_studio.server.app import app, set_active_source, state
+from md_slide_studio import __protocol_version__, __version__
+from md_slide_studio.document.check import check_slide_deck
+from md_slide_studio.providers.assets import default_provider
+from md_slide_studio.render.engine import render_deck
+from md_slide_studio.server.app import app, set_active_source, state
 
 
 @click.group()
-@click.version_option(__version__, prog_name="jc-slide-studio")
+@click.version_option(__version__, prog_name="md-slide-studio")
 def main() -> None:
-    """jc-slide-studio: Markdown slide studio and standalone rendering engine."""
+    """md-slide-studio: Markdown slide studio and standalone rendering engine."""
     pass
 
 
@@ -42,7 +42,7 @@ def doctor(as_json: bool) -> None:
     if as_json:
         click.echo(json.dumps(info, ensure_ascii=False, indent=2))
     else:
-        click.echo(f"jc-slide-studio v{__version__} (Protocol v{__protocol_version__})")
+        click.echo(f"md-slide-studio v{__version__} (Protocol v{__protocol_version__})")
         click.echo(f"Python: {info['pythonVersion']}")
         click.echo(f"Bundled Themes: {len(themes)} available")
         click.echo("Status: OK (Environment ready)")
@@ -145,7 +145,7 @@ def edit(source: Path, port: int, no_browser: bool) -> None:
     import uvicorn
     set_active_source(source)
     url = f"http://127.0.0.1:{port}/"
-    click.echo(f"Starting jc-slide-studio workbench on {url}")
+    click.echo(f"Starting md-slide-studio workbench on {url}")
     if not no_browser:
         webbrowser.open(url)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
@@ -160,14 +160,14 @@ def serve(port: int, host: str, no_browser: bool) -> None:
 
     Unlike ``edit``, no Markdown file is bound to the process. The browser
     detects this through ``/api/doctor`` and switches to the login/library view.
-    Set ``JC_STUDIO_DB`` or ``JC_STUDIO_DATA_DIR`` to move the database.
+    Set ``MD_STUDIO_DB`` or ``MD_STUDIO_DATA_DIR`` to move the database.
     """
     import uvicorn
 
     state.source_path = None
     url = f"http://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}/"
     click.echo(f"Deck library on {url}")
-    from jc_slide_studio.studio.db import db_path
+    from md_slide_studio.studio.db import db_path
     click.echo(f"Database: {db_path()}")
     if not no_browser:
         webbrowser.open(url)

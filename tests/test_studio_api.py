@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from jc_slide_studio.server.app import app, state
+from md_slide_studio.server.app import app, state
 
 
 @pytest.fixture

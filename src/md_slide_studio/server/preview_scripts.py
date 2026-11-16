@@ -5,7 +5,7 @@ Shared by the local file preview (``/preview/*``) and the deck-store preview
 """
 
 WS_RELOAD_SCRIPT = r"""
-<script data-jc-studio-live>
+<script data-md-studio-live data-jc-studio-live>
 (() => {
   const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   const embedded = location.pathname === '/preview/workbench';
@@ -17,8 +17,8 @@ WS_RELOAD_SCRIPT = r"""
         const msg = JSON.parse(event.data);
         if (msg.type === 'RELOAD') {
           location.reload();
-        } else if (msg.type === 'GOTO_PAGE' && window.JCDeck) {
-          JCDeck.goTo(msg.page, msg.step || 1);
+        } else if (msg.type === 'GOTO_PAGE' && (window.MDDeck || window.JCDeck)) {
+          (window.MDDeck || window.JCDeck).goTo(msg.page, msg.step || 1);
         }
       } catch (e) {}
     };
@@ -30,7 +30,7 @@ WS_RELOAD_SCRIPT = r"""
 """
 
 CLICK_MAP_SCRIPT = r"""
-<script data-jc-studio-click-map>
+<script data-md-studio-click-map data-jc-studio-click-map>
 (() => {
   // Bidirectional element click -> notify parent workbench
   document.addEventListener('click', (e) => {
@@ -46,7 +46,7 @@ CLICK_MAP_SCRIPT = r"""
     let text = '';
     const heading = target.closest('h1, h2, h3, h4');
     const notes = target.closest('.notes');
-    const fig = target.closest('.jc-figbox, figure');
+    const fig = target.closest('.md-figbox, .jc-figbox, figure');
 
     if (heading) {
       nodeType = 'heading';

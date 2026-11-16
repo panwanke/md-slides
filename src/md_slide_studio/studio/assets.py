@@ -11,8 +11,8 @@ from tempfile import NamedTemporaryFile
 from typing import BinaryIO
 from urllib.parse import quote
 
-from jc_slide_studio.render.delivery import atomic_write
-from jc_slide_studio.studio.db import data_dir
+from md_slide_studio.render.delivery import atomic_write
+from md_slide_studio.studio.db import data_dir
 
 ALLOWED_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".bmp", ".ico", ".tif", ".tiff",

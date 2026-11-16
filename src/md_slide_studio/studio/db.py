@@ -3,9 +3,9 @@
 The database path is resolved on every connection, so the same code runs
 unchanged on a laptop and behind a reverse proxy:
 
-* default: ``~/.jc-slide-studio/studio.db``
-* ``JC_STUDIO_DATA_DIR``: directory containing ``studio.db``
-* ``JC_STUDIO_DB``: full path to the database file (takes precedence)
+* default: ``~/.md-slide-studio/studio.db``
+* ``MD_STUDIO_DATA_DIR``: directory containing ``studio.db``
+* ``MD_STUDIO_DB``: full path to the database file (takes precedence)
 """
 
 from __future__ import annotations
@@ -70,19 +70,20 @@ def now() -> str:
 
 
 def data_dir() -> Path:
-    override = os.environ.get("JC_STUDIO_DATA_DIR")
+    override = os.environ.get("MD_STUDIO_DATA_DIR") or os.environ.get("JC_STUDIO_DATA_DIR")
     if override:
         path = Path(override).expanduser()
-    elif os.environ.get("JC_STUDIO_DB"):
-        path = Path(os.environ["JC_STUDIO_DB"]).expanduser().resolve().parent
+    elif os.environ.get("MD_STUDIO_DB") or os.environ.get("JC_STUDIO_DB"):
+        db_env = os.environ.get("MD_STUDIO_DB") or os.environ.get("JC_STUDIO_DB")
+        path = Path(db_env).expanduser().resolve().parent
     else:
-        path = Path.home() / ".jc-slide-studio"
+        path = Path.home() / ".md-slide-studio"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def db_path() -> Path:
-    override = os.environ.get("JC_STUDIO_DB")
+    override = os.environ.get("MD_STUDIO_DB") or os.environ.get("JC_STUDIO_DB")
     return Path(override).expanduser().resolve() if override else data_dir() / "studio.db"
 
 
