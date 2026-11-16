@@ -19,6 +19,7 @@ export default function CloudDeckView({ deckId, userLabel, onExit }: Props) {
   const [content, setContent] = useState('');
   const [previewHtml, setPreviewHtml] = useState<string>();
   const [renderError, setRenderError] = useState('');
+  const [missingAssets, setMissingAssets] = useState<string[]>([]);
   const blobUrl = useRef<string>();
 
   useEffect(() => {
@@ -26,10 +27,11 @@ export default function CloudDeckView({ deckId, userLabel, onExit }: Props) {
     const timer = window.setTimeout(async () => {
       if (!content) return;
       try {
-        const resolved = await resolveCloudImages(content, deckId);
+        const { content: resolved, missing } = await resolveCloudImages(content, deckId);
         const result = await renderMarkdown(resolved, detectTheme(content));
         if (!cancelled) {
           setPreviewHtml(result.html);
+          setMissingAssets(missing);
           setRenderError('');
         }
       } catch (error) {
@@ -67,6 +69,7 @@ export default function CloudDeckView({ deckId, userLabel, onExit }: Props) {
         clientRender
         previewSrcDoc={previewHtml}
         standaloneHtml={previewHtml}
+        missingAssets={missingAssets.length ? missingAssets : undefined}
         renderStandalone={() => buildStandaloneHtml(content, deckId)}
         onDocChange={setContent}
         onPresent={() => void present()}

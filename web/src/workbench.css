@@ -729,6 +729,18 @@ svg { flex: none; vertical-align: middle; }
   word-break: break-all;
   user-select: text;
 }
+.missing-asset-jump {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.missing-asset-jump:hover { color: var(--accent); text-decoration-style: solid; }
 
 .preview-caption {
   margin: 12px auto 0;

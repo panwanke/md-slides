@@ -2,6 +2,7 @@ import { cloud } from './client';
 import { currentUser } from './auth';
 import { starterContent } from './templates';
 import { buildAst, renderMarkdown } from '../render/pyodideEngine';
+import { normalizeImagePath } from '../render/missingImages';
 import {
   DeckConflictError,
   type DeckAsset,
@@ -95,19 +96,36 @@ async function assetPath(deckId: number, relativePath: string, uid?: string): Pr
   return storage.userPath(id, `decks/${deckId}/images/${safeName(relativePath)}`);
 }
 
-/** Replace relative Markdown image paths with short-lived cloud URLs for preview. */
-export async function resolveCloudImages(content: string, deckId: number): Promise<string> {
+/** Relative Markdown image paths that could not be resolved to a cloud URL. */
+export interface CloudImageResolution {
+  content: string;
+  /** Author-written relative paths whose signed URL could not be created. */
+  missing: string[];
+}
+
+/**
+ * Replace relative Markdown image paths with short-lived cloud URLs for preview.
+ * Paths that fail to resolve are reported so the workbench can badge them,
+ * instead of silently leaving a broken relative `<img src>` behind.
+ */
+export async function resolveCloudImages(content: string, deckId: number): Promise<CloudImageResolution> {
   const uid = await ownerId();
   const matches = [...content.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)];
   let resolved = content;
+  const missing = new Set<string>();
   for (const match of matches) {
     const raw = match[1].trim().replace(/^<|>$/g, '');
     if (/^(https?:|data:)/i.test(raw)) continue;
-    const path = await assetPath(deckId, raw.split('?')[0], uid);
+    const authored = normalizeImagePath(raw);
+    const path = await assetPath(deckId, authored, uid);
     const url = await signedUrl(path);
-    if (url) resolved = resolved.replace(match[0], match[0].replace(raw, url));
+    if (url) {
+      resolved = resolved.replace(match[0], match[0].replace(raw, url));
+    } else {
+      missing.add(authored);
+    }
   }
-  return resolved;
+  return { content: resolved, missing: [...missing] };
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {

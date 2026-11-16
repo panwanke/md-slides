@@ -20,6 +20,7 @@ import { shortcutText, useShortcut, useShortcuts } from './shortcuts';
 import ProjectControls from './ui/ProjectControls';
 import type { AccountSettingsProps } from './ui/ProjectControls';
 import { downloadText } from './render/download';
+import { mergeMissingPaths, scanBrokenImages } from './render/missingImages';
 import { exportServerDeck } from './render/serverEngine';
 import './workbench.css';
 
@@ -121,7 +122,7 @@ function previewClick(target: Element | null): PreviewClick | undefined {
   }
 }
 
-function MissingAssetsBadge({ paths }: { paths: string[] }) {
+function MissingAssetsBadge({ paths, onPick }: { paths: string[]; onPick?: (path: string) => void }) {
   const [pinned, setPinned] = useState(false);
   const host = useRef<HTMLDivElement>(null);
 
@@ -150,7 +151,14 @@ function MissingAssetsBadge({ paths }: { paths: string[] }) {
       </button>
       <div className="missing-assets-popover" role="status">
         <strong>缺少 {paths.length} 张图片</strong>
-        <ul>{paths.map((path) => <li key={path}>{path}</li>)}</ul>
+        <ul>{paths.map((path) => (
+          <li key={path}>
+            {onPick
+              ? <button type="button" className="missing-asset-jump" title="定位到 Markdown 源码"
+                  onClick={() => { onPick(path); setPinned(false); }}>{path}</button>
+              : <span>{path}</span>}
+          </li>
+        ))}</ul>
       </div>
     </div>
   );
@@ -257,6 +265,7 @@ export default function App({
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [previewRevision, setPreviewRevision] = useState(0);
   const [scale, setScale] = useState(0);
+  const [detectedMissing, setDetectedMissing] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
 
@@ -569,12 +578,26 @@ export default function App({
     if (pane === 'outline') setPane('editor');
   }
 
+  function scanPreviewImages() {
+    // Only the self-hosted preview is a same-origin iframe with document-relative
+    // image sources. Local mode already reports missing paths from disk reads,
+    // and cloud mode reports them from resolveCloudImages — neither needs a DOM
+    // probe here (their images are data/blob/signed URLs, not relative paths).
+    if (staticMode || clientRender) return;
+    const doc = frame.current?.contentDocument;
+    if (!doc) return;
+    setDetectedMissing(scanBrokenImages(doc));
+  }
+
   function onPreviewLoad() {
     const document = frame.current?.contentDocument;
     if (!document || !player(frame.current)) {
       setPlayerState(null);
       return;
     }
+    // Images settle after the iframe load event; probe now and again shortly.
+    scanPreviewImages();
+    window.setTimeout(scanPreviewImages, 600);
     if (connectedPreview.current === document) return;
     connectedPreview.current = document;
     document.addEventListener('keydown', stopSlideArrows, true);
@@ -679,6 +702,7 @@ export default function App({
 
   const total = deck?.slides.length ?? 0;
   const selected = deck?.slides[activePage - 1];
+  const allMissing = mergeMissingPaths(missingAssets, detectedMissing);
   const allClosed = Boolean(deck?.sections.length) && Boolean(deck?.sections.every(({ id }) => closed.has(id)));
   const gridStyle = {
     '--outline-width': `${split.outline}px`,
@@ -888,7 +912,10 @@ export default function App({
                     onLoad={onPreviewLoad}
                     style={{ transform: `scale(${scale})` }}
                   />
-                  {missingAssets && missingAssets.length > 0 && <MissingAssetsBadge paths={missingAssets} />}
+                  {allMissing.length > 0 && <MissingAssetsBadge paths={allMissing} onPick={(path) => {
+                    flushSync(() => setPane('editor'));
+                    session.current?.revealImage(path);
+                  }} />}
                 </div>
                 {selected && <p className="preview-caption" title={slideTitle(selected, deck!)}>{slideTitle(selected, deck!)}</p>}
               </div>}

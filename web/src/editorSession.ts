@@ -289,6 +289,25 @@ export class EditorSession {
     });
   }
 
+  /** Locate an image reference by its authored path and reveal it in the source. */
+  revealImage(path: string) {
+    const view = this.view;
+    if (!view) return;
+    const text = view.state.doc.toString();
+    const needle = `](${path}`;
+    let index = text.indexOf(needle);
+    if (index < 0) {
+      // Fall back to a bare path match (covers query/hash variations).
+      index = text.indexOf(path);
+    }
+    if (index < 0) return;
+    view.dispatch({
+      selection: { anchor: index },
+      effects: EditorView.scrollIntoView(index, { y: 'center' }),
+    });
+    view.focus();
+  }
+
   revealElement({ slideIndex, nodeType, text }: PreviewClick) {
     const view = this.view;
     const slide = this.snapshot?.deck.slides[slideIndex - 1];
