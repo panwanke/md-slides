@@ -3,6 +3,8 @@ import { Facet, RangeSet, StateEffect, StateField } from '@codemirror/state';
 import type { EditorState, Range } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
 import type { ViewUpdate } from '@codemirror/view';
+import katex from 'katex';
+import '../../src/md_slide_studio/providers/assets/katex/katex.inline.css';
 import {
   blockArgument, blockNames, effects, getAttribute, layouts, scanSlideSyntax,
   setAttribute, slideDirective, transitions, updateBlockArgument, updateDirective,
@@ -322,6 +324,66 @@ class ImageWidget extends WidgetType {
   }
 }
 
+class MathWidget extends WidgetType {
+  constructor(
+    readonly source: string,
+    readonly expression: string,
+    readonly anchor: number,
+    readonly display: boolean,
+  ) { super(); }
+
+  eq(other: MathWidget) {
+    return this.source === other.source && this.anchor === other.anchor && this.display === other.display;
+  }
+
+  toDOM(view: EditorView) {
+    const element = view.dom.ownerDocument.createElement(this.display ? 'div' : 'span');
+    element.className = this.display ? 'md-math md-math-block' : 'md-math';
+    element.title = '点击编辑公式';
+    try {
+      katex.render(this.expression, element, { displayMode: this.display, trust: false });
+    } catch {
+      element.textContent = this.source;
+    }
+    element.addEventListener('click', () => {
+      view.dispatch({ selection: { anchor: this.anchor } });
+      view.focus();
+    });
+    return element;
+  }
+}
+
+function buildMathDecorations(state: EditorState) {
+  const decorations: Range<Decoration>[] = [];
+  const { regions } = state.field(syntaxState);
+  const frontmatterEnd = regions[0]?.kind === 'frontmatter' ? regions[0].close?.to ?? -1 : -1;
+  syntaxTree(state).iterate({
+    from: Math.max(0, frontmatterEnd + 1),
+    enter({ name, from, to, node }) {
+      if (name === 'Image') return false;
+      if (name !== 'InlineMath' && name !== 'DisplayMath') return;
+      const source = node.getChild('MathSource');
+      if (!source || from <= frontmatterEnd || touchesSelection(state, from, to)) return false;
+      const display = name === 'DisplayMath';
+      const widget = new MathWidget(
+        state.doc.sliceString(from, to), state.doc.sliceString(source.from, source.to).trim(), source.from, display,
+      );
+      decorations.push(Decoration.replace({ widget, block: display }).range(from, to));
+      return false;
+    },
+  });
+  return Decoration.set(decorations, true);
+}
+
+const mathDecorations = StateField.define({
+  create: buildMathDecorations,
+  update(value, transaction) {
+    return transaction.docChanged || transaction.selection || syntaxTree(transaction.startState) !== syntaxTree(transaction.state)
+      ? buildMathDecorations(transaction.state) : value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 const markClasses: Record<string, string> = {
   Emphasis: 'md-emphasis', StrongEmphasis: 'md-strong', InlineCode: 'md-code',
   Strikethrough: 'md-strike', Link: 'md-link',
@@ -413,4 +475,4 @@ const markdownPreview = ViewPlugin.fromClass(class {
   }
 }, { decorations: (plugin) => plugin.decorations });
 
-export const livePreview = [syntaxState, syntaxDecorations, markdownPreview];
+export const livePreview = [syntaxState, syntaxDecorations, mathDecorations, markdownPreview];
