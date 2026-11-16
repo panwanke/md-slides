@@ -12,6 +12,7 @@ import { LocalFileStore } from './store/localFile';
 import { deckApi } from './store/remote';
 import type { DeckAsset } from './store/remote';
 import type { DeckStore } from './store/types';
+import { mediaFile } from './store/workspace';
 import './workbench.css';
 
 interface WorkbenchProps {
@@ -29,6 +30,12 @@ interface WorkbenchProps {
 
 type Pane = 'outline' | 'editor' | 'preview';
 type Split = 'outline' | 'editor';
+
+function assetSnippet(path: string) {
+  const destination = path.split('/').map((part) =>
+    encodeURIComponent(part).replace(/\(/g, '%28').replace(/\)/g, '%29')).join('/');
+  return `![图片](${destination})`;
+}
 
 interface PlayerState {
   page: number;
@@ -144,6 +151,9 @@ export default function App({
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [assetsList, setAssetsList] = useState<DeckAsset[]>([]);
   const [assetUploading, setAssetUploading] = useState(false);
+  const [assetError, setAssetError] = useState('');
+  const [assetRevision, setAssetRevision] = useState(0);
+  const nextAssetRevision = useRef(0);
   const [copiedPath, setCopiedPath] = useState('');
   const assetFileInput = useRef<HTMLInputElement>(null);
   const assetFolderInput = useRef<HTMLInputElement>(null);
@@ -161,6 +171,12 @@ export default function App({
   const byStep = useRef(false);
   const step = useRef(0);
   const drivingPreview = useRef(false);
+
+  function refreshAssetPreviews() {
+    const revision = ++nextAssetRevision.current;
+    session.current?.refreshAssets(revision);
+    setAssetRevision(revision);
+  }
 
   function drivePreview(page: number, preserveStep = false) {
     if (!preserveStep) step.current = 0;
@@ -221,22 +237,26 @@ export default function App({
       if (event.data?.type === 'ELEMENT_CLICKED') editor.revealElement(event.data);
     }
     function onPaste(event: ClipboardEvent) {
-      if (!deckId) return;
+      if (!deckId || !(event.target instanceof Node) || !host.current?.contains(event.target)) return;
       const files = event.clipboardData?.files;
       if (!files?.length) return;
       const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
       if (!imageFiles.length) return;
       event.preventDefault();
       const formData = new FormData();
-      for (const img of imageFiles) {
-        const ext = img.type.split('/')[1] || 'png';
-        const filename = `images/pasted-${Date.now()}.${ext}`;
+      const uploadId = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+      for (const [index, img] of imageFiles.entries()) {
+        const ext = img.type.split('/')[1].split('+')[0] || 'png';
+        const filename = `images/pasted-${uploadId}-${index}.${ext}`;
         formData.append('files', img, filename);
       }
       void deckApi.uploadAssets(deckId, formData).then((res) => {
-        for (const item of res.saved) {
-          session.current?.insertText(`\n![图片](${item.path})\n`);
-        }
+        if (disposed) return;
+        editor.insertText('\n' + res.saved.map((item) => assetSnippet(item.path)).join('\n\n') + '\n');
+        refreshAssetPreviews();
+        void loadAssets();
+      }).catch((error: unknown) => {
+        if (!disposed) alert(error instanceof Error ? error.message : '上传失败');
       });
     }
 
@@ -259,55 +279,63 @@ export default function App({
     try {
       const res = await deckApi.listAssets(deckId);
       setAssetsList(res.assets);
-    } catch { /* ignore */ }
+    } catch (error) {
+      setAssetError(error instanceof Error ? error.message : '读取附件失败');
+    }
   }
 
   useEffect(() => {
     if (assetsOpen && deckId) {
+      setAssetError('');
       void loadAssets();
     }
   }, [assetsOpen, deckId]);
 
   async function handleAssetUpload(list: FileList | null) {
     if (!list?.length || !deckId) return;
+    const files = Array.from(list).filter((file) => mediaFile.test(file.name));
+    if (assetFileInput.current) assetFileInput.current.value = '';
+    if (assetFolderInput.current) assetFolderInput.current.value = '';
+    if (!files.length) {
+      setAssetError('选中的文件中没有可上传的图片或附件');
+      return;
+    }
     setAssetUploading(true);
+    setAssetError('');
     try {
       const formData = new FormData();
-      for (const f of Array.from(list)) {
-        const rel = (f as unknown as { webkitRelativePath?: string }).webkitRelativePath
-          ? (f as unknown as { webkitRelativePath: string }).webkitRelativePath.split('/').slice(1).join('/')
-          : f.name;
-        formData.append('files', f, rel || f.name);
+      for (const file of files) {
+        formData.append('files', file, file.webkitRelativePath || file.name);
       }
       await deckApi.uploadAssets(deckId, formData);
+      refreshAssetPreviews();
       await loadAssets();
-      if (assetFileInput.current) assetFileInput.current.value = '';
-      if (assetFolderInput.current) assetFolderInput.current.value = '';
     } catch (err) {
-      alert(err instanceof Error ? err.message : '上传失败');
+      setAssetError(err instanceof Error ? err.message : '上传失败');
     } finally {
       setAssetUploading(false);
     }
   }
 
-  async function handleAssetDelete(assetPath: string) {
-    if (!deckId) return;
-    if (!confirm(`确认删除「${assetPath}」？`)) return;
+  async function handleAssetDelete(asset: DeckAsset) {
+    if (!confirm(`确认删除「${asset.path}」？`)) return;
+    setAssetError('');
     try {
-      await deckApi.deleteAsset(deckId, assetPath);
+      await deckApi.deleteAsset(asset);
+      refreshAssetPreviews();
       await loadAssets();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败');
+      setAssetError(err instanceof Error ? err.message : '删除失败');
     }
   }
 
   function insertAssetSnippet(path: string) {
-    session.current?.insertText(`\n![图片](${path})\n`);
+    session.current?.insertText('\n' + assetSnippet(path) + '\n');
     setAssetsOpen(false);
   }
 
   function copyAssetSnippet(path: string) {
-    const text = `![图片](${path})`;
+    const text = assetSnippet(path);
     void navigator.clipboard.writeText(text);
     setCopiedPath(path);
     window.setTimeout(() => setCopiedPath(''), 1800);
@@ -604,7 +632,8 @@ export default function App({
               {file && <div className="frame-assembly" style={{ width: 1280 * scale }}>
                 <div className="frame-box" style={{ height: 720 * scale }}>
                   <iframe id="previewFrame" title="当前幻灯片" ref={frame}
-                    src={`${previewUrl}?revision=${previewRevision}`} onLoad={onPreviewLoad}
+                    src={`${previewUrl}?revision=${previewRevision}${deckId ? '&assets=' + assetRevision : ''}`}
+                    onLoad={onPreviewLoad}
                     style={{ transform: `scale(${scale})` }} />
                 </div>
                 {selected && <p className="preview-caption" title={slideTitle(selected, deck!)}>{slideTitle(selected, deck!)}</p>}
@@ -657,7 +686,7 @@ export default function App({
                 className="button"
                 disabled={assetUploading}
                 onClick={() => assetFolderInput.current?.click()}
-                title="选择本地包含多张图片的文件夹进行批量上传"
+                title="上传图片文件夹并保留文件夹名称及其子目录"
               >
                 <FolderUp size={15} /> 上传图片文件夹
               </button>
@@ -666,6 +695,7 @@ export default function App({
               </span>
             </div>
 
+            {assetError && <p className="library-error" role="alert">{assetError}</p>}
             <div className="assets-grid">
               {assetsList.length === 0 ? (
                 <div className="asset-empty">
@@ -704,7 +734,7 @@ export default function App({
                         <button
                           type="button"
                           className="button"
-                          onClick={() => void handleAssetDelete(asset.path)}
+                          onClick={() => void handleAssetDelete(asset)}
                           title="删除图片"
                           style={{ marginLeft: 'auto', color: 'var(--accent-ink)' }}
                         >

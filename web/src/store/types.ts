@@ -5,6 +5,7 @@ export interface LoadedDeck {
   source: string;
   fullPath: string;
   content: string;
+  assetBase?: string;
   revision: number;
   ast: Deck;
 }

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { deckApi } from '../store/remote';
 import type { DeckMeta, RevisionMeta } from '../store/remote';
+import { folderPath, markdownFile, mediaFile } from '../store/workspace';
 import type { StudioUser } from './Login';
 
 function formatDate(value: string) {
@@ -197,7 +198,7 @@ export default function Library({
     if (!list?.length) return;
     const files = await Promise.all(
       Array.from(list)
-        .filter((file) => /\.(md|markdown|txt)$/i.test(file.name))
+        .filter((file) => markdownFile.test(file.name))
         .map(async (file) => ({ name: file.name, content: await file.text() })),
     );
     if (!files.length) {
@@ -210,44 +211,41 @@ export default function Library({
 
   async function importFolder(list: FileList | null) {
     if (!list?.length) return;
+    const files = Array.from(list);
+    if (folderInput.current) folderInput.current.value = '';
     setBusy(true);
     setError('');
     try {
-      const files = Array.from(list);
-      const mdFiles = files.filter((f) => /\.(md|markdown|txt)$/i.test(f.name));
-      const imageFiles = files.filter((f) => /\.(png|jpg|jpeg|gif|svg|webp|bmp|ico)$/i.test(f.name));
+      const mdFiles = files.filter((file) => markdownFile.test(file.name));
+      const media = files.filter((file) => mediaFile.test(file.name));
 
       if (!mdFiles.length) {
         setError('选中的文件夹内未找到 .md 演示稿文件');
         return;
       }
 
-      // 1. 导入 Markdown 文件
       const mdPayloads = await Promise.all(
         mdFiles.map(async (file) => ({ name: file.name, content: await file.text() })),
       );
       const res = await deckApi.importFiles(mdPayloads);
 
-      // 2. 如果包含图片文件，批量上传到生成的演示稿资产库中
-      if (imageFiles.length && res.decks.length) {
-        for (const deck of res.decks) {
-          const formData = new FormData();
-          for (const img of imageFiles) {
-            const relPath = (img as unknown as { webkitRelativePath?: string }).webkitRelativePath
-              ? (img as unknown as { webkitRelativePath: string }).webkitRelativePath.split('/').slice(1).join('/')
-              : img.name;
-            formData.append('files', img, relPath || img.name);
-          }
-          try {
-            await deckApi.uploadAssets(deck.id, formData);
-          } catch { /* ignore individual asset failure */ }
+      const failures = [];
+      for (const [index, deck] of res.decks.entries()) {
+        const formData = new FormData();
+        formData.set('documentPath', folderPath(mdFiles[index]));
+        for (const file of media) formData.append('files', file, folderPath(file));
+        try {
+          await deckApi.uploadAssets(deck.id, formData);
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          failures.push(`${deck.title} · ${message}`);
         }
       }
 
       await refresh();
-      if (folderInput.current) folderInput.current.value = '';
-
-      if (res.decks.length === 1) {
+      if (failures.length) {
+        setError(`Markdown 已导入，附件上传失败。${failures.join('、')}`);
+      } else if (res.decks.length === 1) {
         location.hash = `#/deck/${res.decks[0].id}`;
       }
     } catch (cause) {

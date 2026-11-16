@@ -3,7 +3,7 @@ import { ChangeSet, Compartment, EditorState } from '@codemirror/state';
 import type { ChangeDesc } from '@codemirror/state';
 import { EditorView, lineNumbers } from '@codemirror/view';
 import { minimalSetup } from 'codemirror';
-import { livePreview } from './livePreview';
+import { imageSource, livePreview } from './livePreview';
 import { blockArgument, getAttribute, scanSlideSyntax, slideDirective, updateDirective } from './slideSyntax';
 import type { BlockKind } from './slideSyntax';
 import { LocalFileStore } from './store/localFile';
@@ -84,6 +84,8 @@ function normalizeDeck(deck: Deck, content: string): Deck {
 
 export class EditorSession {
   private readonly mode = new Compartment();
+  private readonly images = new Compartment();
+  private assetBase?: string;
   private view: EditorView | null = null;
   private snapshot: Snapshot | null = null;
   private inflight: { changes: ChangeDesc } | null = null;
@@ -102,6 +104,7 @@ export class EditorSession {
       const loaded = await this.store.load();
       if (this.destroyed) return;
       const content = loaded.content;
+      this.assetBase = loaded.assetBase;
       const deck = normalizeDeck(loaded.ast, content);
       this.snapshot = { deck, content, changes: ChangeSet.empty(content.length).desc };
       this.view = new EditorView({
@@ -114,6 +117,7 @@ export class EditorSession {
             EditorView.lineWrapping,
             EditorView.contentAttributes.of({ 'aria-label': 'Markdown 编辑器', spellcheck: 'false' }),
             this.mode.of(livePreview),
+            this.images.of(this.assetBase ? imageSource.of({ base: this.assetBase, revision: 0 }) : []),
             EditorView.updateListener.of((update) => {
               if (update.docChanged) {
                 const snapshot = this.snapshot!;
@@ -147,6 +151,13 @@ export class EditorSession {
 
   setMode(mode: Mode) {
     this.view?.dispatch({ effects: this.mode.reconfigure(mode === 'live' ? livePreview : [lineNumbers()]) });
+  }
+
+  refreshAssets(revision: number) {
+    if (!this.assetBase) return;
+    this.view?.dispatch({
+      effects: this.images.reconfigure(imageSource.of({ base: this.assetBase, revision })),
+    });
   }
 
   private scheduleSave() {

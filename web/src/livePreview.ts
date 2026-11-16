@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language';
-import { RangeSet, StateEffect, StateField } from '@codemirror/state';
+import { Facet, RangeSet, StateEffect, StateField } from '@codemirror/state';
 import type { EditorState, Range } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
 import type { ViewUpdate } from '@codemirror/view';
@@ -10,6 +10,11 @@ import {
 import type { SyntaxRegion } from './slideSyntax';
 
 const toggleFold = StateEffect.define<number>({ map: (pos, changes) => changes.mapPos(pos, 1) });
+
+const localImages = { base: '/preview/', revision: 0 };
+export const imageSource = Facet.define<typeof localImages, typeof localImages>({
+  combine: (values) => values[0] ?? localImages,
+});
 
 const syntaxState = StateField.define({
   create: (state) => ({ regions: scanSlideSyntax(state.doc), toggled: new Set<number>() }),
@@ -324,6 +329,7 @@ const markClasses: Record<string, string> = {
 
 function markdownDecorations(view: EditorView) {
   const { state } = view;
+  const images = state.facet(imageSource);
   const decorations: Range<Decoration>[] = [];
   const seen = new Set<string>();
   const { regions } = state.field(syntaxState);
@@ -357,7 +363,11 @@ function markdownDecorations(view: EditorView) {
           const url = state.doc.sliceString(source.from, source.to).replace(/^<|>$/g, '');
           const alt = /^!\[([^\]]*)\]/.exec(state.doc.sliceString(start, end))?.[1] ?? '';
           try {
-            const asset = new URL(url, new URL('/preview/', location.origin));
+            const asset = new URL(url, new URL(images.base, location.origin));
+            if (images.revision && asset.origin === location.origin
+                && asset.pathname.startsWith(images.base.split('/assets/')[0] + '/assets/')) {
+              asset.searchParams.set('assetRevision', String(images.revision));
+            }
             if (['http:', 'https:'].includes(asset.protocol) || asset.href.startsWith('data:image/')) {
               decorations.push(Decoration.replace({ widget: new ImageWidget(asset.href, alt) }).range(start, end));
               return false;
@@ -396,6 +406,7 @@ const markdownPreview = ViewPlugin.fromClass(class {
 
   update(update: ViewUpdate) {
     if (update.docChanged || update.selectionSet || update.viewportChanged
+        || update.startState.facet(imageSource) !== update.state.facet(imageSource)
         || syntaxTree(update.startState) !== syntaxTree(update.state)) {
       this.decorations = markdownDecorations(update.view);
     }

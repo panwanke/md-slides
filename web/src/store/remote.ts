@@ -125,16 +125,11 @@ export const deckApi = {
   listAssets: (deckId: number) =>
     request<{ ok: boolean; assets: DeckAsset[] }>(`/api/decks/${deckId}/assets`),
 
-  uploadAssets: async (deckId: number, formData: FormData) => {
-    const res = await fetch(`/api/decks/${deckId}/assets`, {
-      method: 'POST',
-      body: formData,
-      credentials: 'same-origin',
-    });
-    if (!res.ok) throw new Error(`上传失败 (${res.status})`);
-    return res.json() as Promise<{ ok: boolean; saved: { path: string; url: string; size: number }[] }>;
-  },
+  uploadAssets: (deckId: number, formData: FormData) =>
+    request<{ ok: boolean; saved: DeckAsset[] }>(`/api/decks/${deckId}/assets`, {
+      method: 'POST', body: formData,
+    }),
 
-  deleteAsset: (deckId: number, assetPath: string) =>
-    request<{ ok: boolean }>(`/api/decks/${deckId}/assets/${assetPath}`, { method: 'DELETE' }),
+  deleteAsset: (asset: DeckAsset) =>
+    request<{ ok: boolean }>(asset.url, { method: 'DELETE' }),
 };

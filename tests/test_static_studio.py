@@ -69,7 +69,7 @@ print(json.dumps({'html': html, 'slideCount': info['slideCount']}))
     os.environ.get("JC_TEST_STATIC") != "1",
     reason="opt-in: boots Pyodide in a browser (JC_TEST_STATIC=1)",
 )
-def test_static_studio_renders_in_browser():
+def test_static_studio_renders_in_browser(tmp_path):
     if not (DIST / "studio.html").is_file():
         pytest.skip("run `npm run build:static` first")
 
@@ -94,6 +94,59 @@ def test_static_studio_renders_in_browser():
             frame = page.frame_locator("iframe.studio-preview")
             assert frame.locator("section.slide").count() >= 3
             assert "渲染失败" not in page.locator(".studio-status").inner_text()
+            active_slide = frame.locator("section.slide.is-active")
+            assert active_slide.evaluate("(slide) => slide.ownerDocument.defaultView.JCDeck.goTo(2).page") == 2
+
+            workspace = tmp_path / "workspace"
+            (workspace / "talks" / "images").mkdir(parents=True)
+            (workspace / "shared").mkdir()
+            image = '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>'
+            (workspace / "talks" / "images" / "figure.svg").write_text(image, encoding="utf-8")
+            (workspace / "shared" / "图 1.svg").write_text(image, encoding="utf-8")
+            (workspace / "talks" / "talk.md").write_text(
+                "# A\n\n![Local](images/figure.svg)\n\n"
+                "Inline ![Shared](<../shared/图 1.svg>)\n\n"
+                "![Missing](images/missing.png)\n",
+                encoding="utf-8",
+            )
+            (workspace / "intro.md").write_text("# Intro\n", encoding="utf-8")
+            page.evaluate("delete window.showDirectoryPicker")
+            with page.expect_file_chooser() as chooser:
+                page.get_by_role("button", name="打开工作文件夹").click(timeout=5_000)
+            chooser.value.set_files(workspace)
+            page.get_by_label("工作文件夹中的 Markdown").select_option("talks/talk.md")
+            for alt in ("Local", "Shared"):
+                image_locator = frame.get_by_alt_text(alt)
+                image_locator.wait_for()
+                assert image_locator.evaluate("(img) => img.decode().then(() => img.naturalWidth)") == 8
+            assert "images/missing.png" in page.locator(".studio-status").inner_text()
+            with page.expect_download() as downloaded:
+                page.get_by_role("button", name="导出 .html").click()
+            assert downloaded.value.suggested_filename == "talk.html"
+            assert downloaded.value.path().read_text(encoding="utf-8").count("data:image/svg+xml;base64,") >= 2
+
+            # Use real browser file handles without automating the system picker.
+            page.evaluate("""async () => {
+              const root = await navigator.storage.getDirectory();
+              const handle = await root.getFileHandle('writable.md', { create: true });
+              const writer = await handle.createWritable();
+              await writer.write('# Before');
+              await writer.close();
+              window.showDirectoryPicker = async () => root;
+            }""")
+            page.get_by_role("button", name="打开工作文件夹").click()
+            page.get_by_label("工作文件夹中的 Markdown").locator('option[value="writable.md"]').wait_for(state="attached")
+            editor = page.locator(".studio-editor .cm-content")
+            editor.fill("# Saved locally")
+            unsaved = page.get_by_text("未保存", exact=True)
+            unsaved.wait_for()
+            page.get_by_role("button", name="保存到本地").click()
+            unsaved.wait_for(state="hidden")
+            assert page.evaluate("""async () => {
+              const root = await navigator.storage.getDirectory();
+              const file = await (await root.getFileHandle('writable.md')).getFile();
+              return file.text();
+            }""") == "# Saved locally"
             assert page_errors == [], f"page errors: {page_errors}"
             browser.close()
     finally:
