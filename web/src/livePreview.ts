@@ -353,7 +353,46 @@ class MathWidget extends WidgetType {
   }
 }
 
-function buildMathDecorations(state: EditorState) {
+class DiagramWidget extends WidgetType {
+  constructor(readonly source: string, readonly original: string, readonly anchor: number) { super(); }
+
+  eq(other: DiagramWidget) {
+    return this.original === other.original && this.anchor === other.anchor;
+  }
+
+  toDOM(view: EditorView) {
+    const doc = view.dom.ownerDocument;
+    const element = doc.createElement('div');
+    element.className = 'md-diagram';
+    element.title = '点击编辑图表源码';
+    element.textContent = '正在绘图…';
+    element.addEventListener('click', () => {
+      view.dispatch({ selection: { anchor: this.anchor } });
+      view.focus();
+    });
+    void import('pele').then(({ render }) => {
+      if (!element.isConnected) return;
+      const { svg } = render(this.source, { links: false, images: false });
+      const image = doc.createElement('img');
+      image.alt = 'Pele 图表';
+      image.addEventListener('load', () => { if (element.isConnected) view.requestMeasure(); });
+      image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      element.replaceChildren(image);
+    }).catch(() => {
+      if (!element.isConnected) return;
+      const error = doc.createElement('div');
+      error.className = 'md-diagram-error';
+      error.textContent = '绘图失败，请检查 Mermaid 语法';
+      const source = doc.createElement('pre');
+      source.textContent = this.original;
+      element.replaceChildren(error, source);
+      view.requestMeasure();
+    });
+    return element;
+  }
+}
+
+function buildRichDecorations(state: EditorState) {
   const decorations: Range<Decoration>[] = [];
   const { regions } = state.field(syntaxState);
   const frontmatterEnd = regions[0]?.kind === 'frontmatter' ? regions[0].close?.to ?? -1 : -1;
@@ -361,6 +400,22 @@ function buildMathDecorations(state: EditorState) {
     from: Math.max(0, frontmatterEnd + 1),
     enter({ name, from, to, node }) {
       if (name === 'Image') return false;
+      if (name === 'FencedCode') {
+        const info = node.getChild('CodeInfo');
+        if (!info || from <= frontmatterEnd || touchesSelection(state, from, to)) return false;
+        const language = state.doc.sliceString(info.from, info.to).trim().split(/\s+/, 1)[0].toLowerCase();
+        if (!['mermaid', 'pele', 'diagram'].includes(language)) return false;
+        const marks = node.getChildren('CodeMark');
+        if (marks.length !== 2 || !state.doc.sliceString(marks[0].from, marks[0].to).startsWith('```')) return false;
+        const start = state.doc.lineAt(marks[0].from).to + 1;
+        const end = state.doc.lineAt(marks[1].from).from;
+        const source = state.doc.sliceString(start, end).trim();
+        if (source) {
+          const widget = new DiagramWidget(source, state.doc.sliceString(from, to), start);
+          decorations.push(Decoration.replace({ widget, block: true }).range(from, to));
+        }
+        return false;
+      }
       if (name !== 'InlineMath' && name !== 'DisplayMath') return;
       const source = node.getChild('MathSource');
       if (!source || from <= frontmatterEnd || touchesSelection(state, from, to)) return false;
@@ -375,11 +430,11 @@ function buildMathDecorations(state: EditorState) {
   return Decoration.set(decorations, true);
 }
 
-const mathDecorations = StateField.define({
-  create: buildMathDecorations,
+const richDecorations = StateField.define({
+  create: buildRichDecorations,
   update(value, transaction) {
     return transaction.docChanged || transaction.selection || syntaxTree(transaction.startState) !== syntaxTree(transaction.state)
-      ? buildMathDecorations(transaction.state) : value;
+      ? buildRichDecorations(transaction.state) : value;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
@@ -475,4 +530,4 @@ const markdownPreview = ViewPlugin.fromClass(class {
   }
 }, { decorations: (plugin) => plugin.decorations });
 
-export const livePreview = [syntaxState, syntaxDecorations, mathDecorations, markdownPreview];
+export const livePreview = [syntaxState, syntaxDecorations, richDecorations, markdownPreview];

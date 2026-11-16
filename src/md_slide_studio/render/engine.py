@@ -83,6 +83,10 @@ CSS = """
 /* end page */
 .jc-end .jc-body h2{margin-bottom:.6em}
 .jc-math-block{margin:.8em 0;text-align:center;font-size:clamp(18px,1.8vw,26px)}
+.md-diagram{margin:.55em 0;text-align:center}
+.md-diagram img{display:block;width:auto;max-width:100%;max-height:40vh;margin:auto}
+.md-diagram pre{text-align:left;white-space:pre-wrap}
+.md-diagram-error{margin:.25em 0;font-size:.85em}
 .deck-footer{display:flex;justify-content:space-between;width:100%;
   padding:0 64px 20px;font-size:12px;color:var(--text-3);position:absolute;bottom:0;left:0}
 .jc-cover .deck-footer,.jc-section .deck-footer{display:flex}
@@ -164,9 +168,28 @@ TAIL_TEMPLATE = """
 {nav_js}
 </script>
 {katex_script}
+{diagram_script}
 {extra_scripts}
 </body>
 </html>
+"""
+
+PELE_RENDER_SCRIPT = """
+for (const source of document.querySelectorAll('.md-diagram pre[data-pele-source]')) {
+  try {
+    const { svg } = pele.render(source.textContent, { links: false, images: false });
+    const image = document.createElement('img');
+    image.alt = 'Pele 图表';
+    image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    source.hidden = true;
+    source.after(image);
+  } catch {
+    const error = document.createElement('p');
+    error.className = 'md-diagram-error';
+    error.textContent = '绘图失败，请检查 Mermaid 语法';
+    source.before(error);
+  }
+}
 """
 
 
@@ -279,13 +302,15 @@ def parse_blocks(text: str) -> List[Dict[str, Any]]:
             continue
 
         if s.startswith("```"):
+            language = s[3:].lstrip("`").strip().split(maxsplit=1)
             i += 1
             buf = []
             while i < len(lines) and not lines[i].strip().startswith("```"):
                 buf.append(lines[i])
                 i += 1
             i += 1
-            blocks.append({"type": "code", "text": "\n".join(buf)})
+            kind = "diagram" if language and language[0].lower() in {"mermaid", "pele", "diagram"} else "code"
+            blocks.append({"type": kind, "text": "\n".join(buf)})
             continue
 
         m = re.match(r"^(#{1,6})\s+(.*)$", s)
@@ -392,6 +417,8 @@ def render_blocks(blocks: List[Dict[str, Any]], skip_images: bool = False) -> st
             out.append(f"<blockquote>{inline(b['text'])}</blockquote>")
         elif t == "code":
             out.append(f"<pre><code>{html.escape(b['text'])}</code></pre>")
+        elif t == "diagram":
+            out.append(f'<figure class="md-diagram"><pre data-pele-source>{html.escape(b["text"])}</pre></figure>')
         elif t == "table":
             th = "".join(f"<th>{inline(c)}</th>" for c in b["header"])
             tr = "".join(
@@ -668,6 +695,10 @@ def render_text(
     runtime_js = default_provider.get_runtime_js().replace("</script", "<\\/script")
     fx_js = fx_js.replace("</script", "<\\/script")
     nav_js = nav_js.replace("</script", "<\\/script")
+    diagram_script = ""
+    if any("<pre data-pele-source>" in slide for slide in rendered_slides):
+        pele_js = default_provider.get_pele_js().replace("</script", "<\\/script")
+        diagram_script = f"<script>\n{pele_js}\n{PELE_RENDER_SCRIPT}\n</script>"
 
     head = HEAD_TEMPLATE.format(
         lang=deck_sub.get("lang") or meta.get("lang") or "zh",
@@ -686,6 +717,7 @@ def render_text(
         fx_js=fx_js,
         nav_js=nav_js,
         katex_script=katex_scripts + KATEX_SCRIPT,
+        diagram_script=diagram_script,
         extra_scripts=extra_scripts,
     )
 

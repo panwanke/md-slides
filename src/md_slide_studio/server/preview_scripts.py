@@ -48,7 +48,11 @@ CLICK_MAP_SCRIPT = r"""
     const notes = target.closest('.notes');
     const fig = target.closest('.md-figbox, .jc-figbox, figure');
 
-    if (heading) {
+    const diagram = target.closest('.md-diagram');
+    if (diagram) {
+      nodeType = 'diagram';
+      text = diagram.querySelector('pre')?.textContent?.trim().split('\n')[0] || '';
+    } else if (heading) {
       nodeType = 'heading';
       text = heading.innerText.trim();
     } else if (notes) {
@@ -61,7 +65,7 @@ CLICK_MAP_SCRIPT = r"""
     } else if (target.closest('p, li, blockquote')) {
       nodeType = 'text';
       text = target.innerText.trim();
-    }
+    } else return;
 
     try {
       window.parent.postMessage({

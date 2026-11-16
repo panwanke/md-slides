@@ -404,6 +404,11 @@ svg { flex: none; vertical-align: middle; }
 .md-math:not(.md-math-block) { display: inline-block; max-width: 100%; }
 .md-math-block { max-width: 100%; overflow-x: auto; }
 .md-math-block .katex-display { margin-block: .45em; }
+.editor-host .md-diagram { padding: .45em 0; text-align: center; cursor: text; }
+.editor-host .md-diagram img { display: block; max-width: 100%; height: auto; margin-inline: auto; }
+.editor-host .md-diagram pre { margin: 0; text-align: left; white-space: pre-wrap; font-family: var(--mono); }
+.editor-host .md-diagram-error { color: var(--accent-ink); text-align: left; }
+.preview-stage:focus-visible { outline: 2px solid #f1b99a; outline-offset: -2px; }
 .md-image { display: inline-block; max-width: 100%; color: var(--muted); font-size: 12px; vertical-align: middle; }
 .md-image img {
   display: block;

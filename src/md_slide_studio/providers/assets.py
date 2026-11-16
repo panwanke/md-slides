@@ -73,6 +73,12 @@ class AssetProvider:
         license_text = (katex / "LICENSE").read_text(encoding="utf-8")
         return css, f"/*!\n{license_text}\n*/\n{js}"
 
+    def get_pele_js(self) -> str:
+        pele = self.assets_dir / "pele"
+        license_text = (pele / "LICENSE").read_text(encoding="utf-8")
+        runtime = (pele / "pele.global.js").read_text(encoding="utf-8").split("\n//# sourceMappingURL=", 1)[0]
+        return f"/*!\n{license_text}\n*/\n{runtime}"
+
     def get_navigation_assets(self) -> tuple[str, str]:
         nav_css = self.assets_dir / "chapter-navigation.css"
         nav_js = self.assets_dir / "chapter-navigation.js"
