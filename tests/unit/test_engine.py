@@ -5,7 +5,7 @@ from md_slide_studio.render.engine import render_deck
 
 
 def test_render_deck_unbundled():
-    fixture = Path("tests/fixtures/steps.md")
+    fixture = Path("tests/fixtures/workbench-e2e.md")
     html_text, out = render_deck(fixture, bundle=False)
     assert "<!DOCTYPE html>" in html_text
     assert "JCDeck" in html_text

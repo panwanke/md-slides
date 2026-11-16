@@ -41,6 +41,6 @@ def test_build_document_ast_fixture():
     assert fixture_path.is_file()
     text = fixture_path.read_text(encoding="utf-8")
     ast = build_document_ast(text, revision=1)
-    assert ast["slideCount"] == 4
+    assert ast["slideCount"] == 7
     assert ast["documentRevision"] == 1
     assert ast["slides"][0]["layout"] == "cover"

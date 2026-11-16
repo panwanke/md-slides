@@ -85,6 +85,31 @@ def test_signup_library_edit_and_reload(library_server):
         browser.close()
 
 
+def test_single_markdown_import_opens_the_editor(library_server):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        response = page.request.post(f"{library_server}/api/auth/signup", data={
+            "email": "import@example.com", "password": "password123",
+        })
+        assert response.ok
+        page.goto(library_server)
+        expect(page.get_by_role("link", name="GitHub · Star")).to_have_attribute(
+            "href", "https://github.com/panwanke/md-slides",
+        )
+        page.get_by_role("button", name="设置").click()
+        settings = page.get_by_role("dialog", name="设置")
+        settings.get_by_role("button", name="打开 Markdown", exact=False).click()
+        page.keyboard.press("Control+Alt+m")
+        settings.get_by_role("button", name="完成").click()
+        with page.expect_file_chooser() as chooser:
+            page.keyboard.press("Control+Alt+m")
+        chooser.value.set_files({
+            "name": "draft.md", "mimeType": "text/markdown", "buffer": b"# Imported draft",
+        })
+        expect(page.locator("#editor .cm-content")).to_contain_text("Imported draft")
+
+
 def test_empty_state_create_rename_and_delete(library_server):
     url = library_server
     with sync_playwright() as playwright:
@@ -158,7 +183,7 @@ def test_folder_import_and_image_upload_refresh_both_previews(library_server, tm
         assert response.ok
         page.goto(library_server)
         with page.expect_file_chooser() as chooser:
-            page.get_by_role("button", name="导入文件夹", exact=False).click()
+            page.get_by_role("button", name="打开工作文件夹", exact=True).click()
         chooser.value.set_files(tmp_path)
 
         frame = page.frame_locator("#previewFrame")
@@ -178,4 +203,10 @@ def test_folder_import_and_image_upload_refresh_both_previews(library_server, tm
             direct = region.get_by_alt_text("Direct")
             direct.wait_for(timeout=5_000)
             assert direct.evaluate("(img) => img.decode().then(() => img.naturalWidth)") == 8
+        page.locator(".assets-modal-panel").get_by_role("button", name="关闭").click()
+        with page.expect_download() as downloaded:
+            page.get_by_role("button", name="导出 HTML").click()
+        assert downloaded.value.suggested_filename == "deck.html"
+        html = downloaded.value.path().read_text(encoding="utf-8")
+        assert html.count('<img src="data:image/svg+xml;base64,') == 2
         browser.close()

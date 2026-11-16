@@ -8,7 +8,7 @@ def test_check_valid_fixture():
     fixture = Path("tests/fixtures/steps.md")
     result = check_slide_deck(fixture)
     assert result["ok"] is True
-    assert result["slideCount"] == 4
+    assert result["slideCount"] == 7
 
 
 def test_check_missing_file():

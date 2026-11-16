@@ -16,7 +16,7 @@ from md_slide_studio.server.app import app, state
 def workbench(tmp_path):
     fixture = Path(__file__).parent / "fixtures"
     deck = tmp_path / "steps.md"
-    original = (fixture / deck.name).read_text(encoding="utf-8")
+    original = (fixture / "workbench-e2e.md").read_text(encoding="utf-8")
     deck.write_text(original.replace('kicker: "功能示例"', 'kicker: "功能示例 🎬"'), encoding="utf-8")
     shutil.copy(fixture / "steps.svg", tmp_path)
     previous_source, previous_revision = state.source_path, state.revision
@@ -89,6 +89,176 @@ def test_workbench_and_sections_e2e(workbench):
         expect(page.locator("#saveStatus")).to_have_text("已保存")
         assert deck.read_text(encoding="utf-8").count("::: notes") == 5
         assert not errors
+
+
+def test_local_workbench_opens_workspace_and_exports_offline(workbench, tmp_path):
+    url, original = workbench
+    folder = tmp_path / "workspace"
+    (folder / "decks").mkdir(parents=True)
+    (folder / "figures").mkdir()
+    (folder / "figures" / "plot.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12"/>', encoding="utf-8",
+    )
+    (folder / "decks" / "talk.md").write_text(
+        "# Workspace talk\n\n![Plot](../figures/plot.svg)\n\n---\n\n# Next slide\n",
+        encoding="utf-8",
+    )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.add_init_script("delete window.showDirectoryPicker")
+        page.goto(url)
+        expect(page.locator("#fileNameDisplay")).to_have_text("steps.md")
+        toolbar = page.get_by_role("banner")
+        open_folder = toolbar.get_by_role("button", name="打开工作文件夹")
+        expect(open_folder).to_be_visible()
+        assert open_folder.bounding_box()["x"] < page.locator("#fileNameDisplay").bounding_box()["x"]
+        present = toolbar.get_by_role("link", name="演示")
+        assert toolbar.get_by_role("link", name="GitHub · Star").bounding_box()["x"] > present.bounding_box()["x"]
+        assert toolbar.get_by_role("button", name="设置").bounding_box()["x"] > present.bounding_box()["x"]
+
+        editor = page.locator("#editor .cm-content")
+        editor.fill("# Export the current text\n\n![Original](steps.svg)\n\n$E=mc^2$\n\n---\n\n# Offline slide two")
+        with page.expect_download() as downloaded:
+            toolbar.get_by_role("button", name="导出 HTML").click()
+        assert downloaded.value.suggested_filename == "steps.html"
+        output = tmp_path / "export.html"
+        downloaded.value.save_as(output)
+        offline = browser.new_page(offline=True)
+        offline.goto(output.as_uri())
+        expect(offline.get_by_role("heading", name="Export the current text")).to_be_visible()
+        assert offline.get_by_alt_text("Original").evaluate("img => img.decode().then(() => img.naturalWidth)") > 0
+        expect(offline.locator(".katex")).to_be_visible()
+        offline.keyboard.press("ArrowRight")
+        expect(offline.get_by_role("heading", name="Offline slide two")).to_be_visible()
+
+        with page.expect_file_chooser() as chooser:
+            open_folder.click()
+        chooser.value.set_files(folder)
+        expect(page.locator("#fileNameDisplay")).to_have_text("talk.md")
+        frame = page.frame_locator("#previewFrame")
+        assert frame.get_by_alt_text("Plot").evaluate("img => img.decode().then(() => img.naturalWidth)") == 24
+        with page.expect_download() as downloaded:
+            toolbar.get_by_role("button", name="导出 HTML").click()
+        assert downloaded.value.suggested_filename == "talk.html"
+        assert re.search(r'<img src="data:image/svg\+xml;base64,', downloaded.value.path().read_text(encoding="utf-8"))
+
+        with page.expect_file_chooser() as chooser:
+            toolbar.get_by_role("button", name="打开 Markdown").click()
+        chooser.value.set_files({"name": "loose.md", "mimeType": "text/markdown", "buffer": b"# Loose draft"})
+        expect(editor).to_contain_text("Loose draft")
+        toolbar.get_by_role("button", name="返回启动稿件").click()
+        expect(page.locator("#fileNameDisplay")).to_have_text("steps.md")
+        assert "Export the current text" in original.read_text(encoding="utf-8")
+
+
+def test_preview_paging_keeps_the_editor_cursor_and_restores_the_view(workbench):
+    url, _ = workbench
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context(viewport={"width": 1440, "height": 900})
+        context.route("https://**/*", lambda route: route.abort())
+        page = context.new_page()
+        page.goto(url)
+        page.get_by_role("button", name="Markdown 源码").click()
+        cursor = page.locator(".cursor-position")
+        original = cursor.inner_text()
+        frame = page.frame_locator("#previewFrame")
+        expect(frame.locator(".slide.is-active")).to_have_attribute("data-slide-id", "slide-1")
+
+        stage = page.get_by_role("group", name="预览翻页")
+        stage.click(position={"x": 5, "y": 5})
+        page.keyboard.press("ArrowRight")
+        expect(frame.locator(".slide.is-active")).to_have_attribute("data-slide-id", "slide-2")
+        expect(cursor).to_have_text(original)
+        expect(stage).to_be_focused()
+
+        frame.locator(".slide.is-active").click(position={"x": 5, "y": 5})
+        page.keyboard.press("ArrowRight")
+        expect(frame.locator(".slide.is-active")).to_have_attribute("data-slide-id", "slide-3")
+        expect(cursor).to_have_text(original)
+
+        page.close()
+        reopened = context.new_page()
+        reopened.goto(url)
+        expect(reopened.get_by_role("button", name="Markdown 源码")).to_have_attribute("aria-pressed", "true")
+        expect(reopened.locator(".cursor-position")).to_have_text(original)
+        expect(reopened.frame_locator("#previewFrame").locator(".slide.is-active")).to_have_attribute(
+            "data-slide-id", "slide-3",
+        )
+
+
+def test_pele_renders_in_editor_preview_and_export(workbench, tmp_path):
+    url, deck = workbench
+    deck.write_text(
+        "# Diagram\n\n"
+        "```mermaid\nflowchart LR\nA[输入] --> B[结果]\n```\n\n"
+        "```pele\nnot a diagram\n```\n",
+        encoding="utf-8",
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.route("https://**/*", lambda route: route.abort())
+        page.goto(url)
+        editor_diagram = page.locator("#editor .md-diagram img")
+        frame = page.frame_locator("#previewFrame")
+        for image in (editor_diagram, frame.locator(".md-diagram img")):
+            expect(image).to_be_visible()
+            assert image.evaluate("img => img.decode().then(() => img.naturalWidth)") > 0
+        expect(frame.locator(".md-diagram-error")).to_contain_text("绘图失败")
+        editor_diagram.click()
+        expect(page.locator("#editor .cm-content")).to_contain_text("flowchart LR")
+
+        with page.expect_download() as download:
+            page.get_by_role("button", name="导出 HTML").click()
+        output = tmp_path / "diagram.html"
+        download.value.save_as(output)
+        offline = browser.new_page(offline=True)
+        offline.goto(output.as_uri())
+        image = offline.locator(".md-diagram img")
+        expect(image).to_be_visible()
+        assert image.evaluate("img => img.decode().then(() => img.naturalWidth)") > 0
+
+
+def test_editor_renders_latex_and_reveals_editable_source(workbench):
+    url, deck = workbench
+    source = (
+        "# Math\n\n"
+        r"Inline $x_i^2$ and \(e^{i\pi}\)" "\n\n"
+        "- Display in a list:\n"
+        r"  $$\frac{\sigma}{\sqrt{2}}$$" "\n\n"
+        "$$\n"
+        r"\begin{aligned}a&=b\\c&=d\end{aligned}" "\n"
+        "$$\n\n"
+        r"Leave \$escaped and `code $y$` as text." "\n\n"
+        "~~~\n$fenced$\n~~~\n\n"
+        "After the formulas.\n"
+    )
+    deck.write_text(source, encoding="utf-8")
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.route("https://**/*", lambda route: route.abort())
+        page.goto(url)
+        editor = page.locator("#editor .cm-content")
+        formulas = editor.locator(".md-math .katex")
+        expect(formulas).to_have_count(4)
+        expect(editor.locator(".md-math .katex-display")).to_have_count(2)
+        expect(editor).to_contain_text("$fenced$")
+
+        editor.locator(".md-math").first.click()
+        expect(editor).to_contain_text("$x_i^2$")
+        expect(formulas).to_have_count(3)
+        page.keyboard.press("Control+End")
+        expect(formulas).to_have_count(4)
+
+        page.get_by_role("button", name="Markdown 源码").click()
+        expect(formulas).to_have_count(0)
+        expect(editor).to_contain_text(r"\begin{aligned}a&=b\\c&=d\end{aligned}")
+        assert deck.read_text(encoding="utf-8") == source
 
 
 def test_live_preview_widgets_round_trip(workbench):
