@@ -259,6 +259,12 @@ def test_workspace_toolbar_and_custom_shortcuts(tmp_path):
                     page.keyboard.press("Control+s")
                 assert download.value.suggested_filename == "shortcut.md"
 
+                page.get_by_role("button", name="预览", exact=True).click()
+                preview = page.frame_locator("#previewFrame")
+                preview.get_by_role("heading", name="Shortcut opened the workspace").click()
+                expect(page.locator("#editor .cm-content")).to_be_focused()
+                expect(page.get_by_role("button", name="编辑", exact=True)).to_have_attribute("aria-pressed", "true")
+
                 toolbar.get_by_role("button", name="设置").click()
                 settings.get_by_role("button", name="恢复默认快捷键").click()
                 expect(workspace_key).to_contain_text("O")

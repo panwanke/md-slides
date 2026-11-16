@@ -45,6 +45,7 @@ def test_workbench_and_sections_e2e(workbench):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.route("https://**/*", lambda route: route.abort())
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(url)
@@ -100,7 +101,7 @@ def test_local_workbench_opens_workspace_and_exports_offline(workbench, tmp_path
         '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12"/>', encoding="utf-8",
     )
     (folder / "decks" / "talk.md").write_text(
-        "# Workspace talk\n\n![Plot](../figures/plot.svg)\n\n---\n\n# Next slide\n",
+        "# Workspace talk\n\n![Plot](../figures/plot.svg)\n\n---\n\n# Next slide\n\nClick **this phrase** in the preview.\n",
         encoding="utf-8",
     )
 
@@ -143,6 +144,11 @@ def test_local_workbench_opens_workspace_and_exports_offline(workbench, tmp_path
         expect(page.get_by_label("工作文件夹中的 Markdown")).to_have_value("decks/talk.md")
         frame = page.frame_locator("#previewFrame")
         assert frame.get_by_alt_text("Plot").evaluate("img => img.decode().then(() => img.naturalWidth)") == 24
+        page.get_by_role("group", name="预览翻页").click(position={"x": 5, "y": 5})
+        page.keyboard.press("ArrowRight")
+        frame.get_by_text("this phrase", exact=True).click()
+        expect(editor).to_be_focused()
+        assert page.evaluate("window.getSelection().toString()") == "this phrase"
         with page.expect_download() as downloaded:
             toolbar.get_by_role("button", name="导出 HTML").click()
         assert downloaded.value.suggested_filename == "talk.html"
@@ -366,8 +372,20 @@ def test_preview_paging_keeps_the_editor_cursor_and_restores_the_view(workbench,
 
         frame.locator(".slide.is-active").click(position={"x": 5, "y": 5})
         page.keyboard.press("ArrowRight")
-        expect(frame.locator(".slide.is-active")).to_have_attribute("data-slide-id", "slide-3")
+        expect(frame.locator(".slide.is-active")).to_have_attribute("data-slide-id", "slide-2")
         expect(cursor).to_have_text(original)
+
+        frame.get_by_text("第二条：图片、样式和脚本都在文件里。", exact=True).click()
+        expect(editor).to_be_focused()
+        assert page.evaluate("window.getSelection().toString()") == "第二条：图片、样式和脚本都在文件里。"
+        page.keyboard.press("ArrowRight")
+        expect(frame.locator(".slide.is-active")).to_have_attribute("data-slide-id", "slide-2")
+        before_flip = cursor.inner_text()
+
+        stage.click(position={"x": 5, "y": 5})
+        page.keyboard.press("ArrowRight")
+        expect(frame.locator(".slide.is-active")).to_have_attribute("data-slide-id", "slide-3")
+        expect(cursor).to_have_text(before_flip)
 
         context.close()
         restored = playwright.chromium.launch_persistent_context(profile, viewport={"width": 1440, "height": 900})
@@ -375,7 +393,7 @@ def test_preview_paging_keeps_the_editor_cursor_and_restores_the_view(workbench,
         reopened = restored.pages[0]
         reopened.goto(url)
         expect(reopened.get_by_role("button", name="Markdown 源码")).to_have_attribute("aria-pressed", "true")
-        expect(reopened.locator(".cursor-position")).to_have_text(original)
+        expect(reopened.locator(".cursor-position")).to_have_text(before_flip)
         expect(reopened.frame_locator("#previewFrame").locator(".slide.is-active")).to_have_attribute(
             "data-slide-id", "slide-3",
         )

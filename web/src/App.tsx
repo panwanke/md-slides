@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, MutableRefObject, PointerEvent } from 'react';
+import { flushSync } from 'react-dom';
 import {
   ArrowUpRight, Check, ChevronsUpDown, ChevronDown, ChevronLeft, ChevronRight, Code2, Columns,
   Copy, Download, FileText, Film, FolderUp, Image as ImageIcon, List, Monitor, PanelTop, Plus, Presentation, Save,
@@ -92,6 +93,30 @@ function slideTitle(slide: SlideSummary, deck: Deck) {
 
 function player(frame: HTMLIFrameElement | null) {
   return (frame?.contentWindow as (Window & { JCDeck?: DeckPlayer }) | null)?.JCDeck;
+}
+
+function previewClick(target: Element | null): PreviewClick | undefined {
+  const slide = target?.closest?.('section.slide.is-active');
+  if (!target || !slide || target.closest('button, input, select, textarea')) return;
+  const slideIndex = Number(slide.querySelector('.slide-number')?.getAttribute('data-current'));
+  if (!Number.isInteger(slideIndex) || slideIndex < 1) return;
+
+  const diagram = target.closest('.md-diagram');
+  if (diagram) return { slideIndex, nodeType: 'diagram', text: diagram.querySelector('pre')?.textContent ?? '' };
+  const heading = target.closest('h1, h2, h3, h4');
+  if (heading) return { slideIndex, nodeType: 'heading', text: heading.textContent ?? '' };
+  const notes = target.closest('.notes');
+  if (notes) return { slideIndex, nodeType: 'notes', text: notes.textContent ?? '' };
+  const image = target.closest('img') ?? target.closest('.md-figbox, .jc-figbox, figure')?.querySelector('img');
+  if (image) return { slideIndex, nodeType: 'image', text: image.getAttribute('src') ?? '' };
+  if (target.closest('p, li, blockquote, pre, td, th')) {
+    return { slideIndex, nodeType: 'text', text: target.textContent ?? '' };
+  }
+}
+
+function stopSlideArrows(event: globalThis.KeyboardEvent) {
+  // Leave arrow navigation to the surrounding workbench while this deck is embedded.
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') event.stopImmediatePropagation();
 }
 
 function readSplit() {
@@ -323,14 +348,6 @@ export default function App({
     }
     if (!staticMode && !clientRender) connect();
 
-    function onPreviewMessage(event: MessageEvent<PreviewClick & { type?: string }>) {
-      if (event.source !== frame.current?.contentWindow) return;
-      if (!staticMode && !clientRender && event.origin !== location.origin) return;
-      if (event.data?.type === 'ELEMENT_CLICKED'
-          && ['heading', 'text', 'image', 'notes', 'diagram'].includes(event.data.nodeType)) {
-        editor.revealElement(event.data);
-      }
-    }
     function onPaste(event: ClipboardEvent) {
       if (!deckId || !(event.target instanceof Node) || !host.current?.contains(event.target)) return;
       const files = event.clipboardData?.files;
@@ -356,13 +373,11 @@ export default function App({
     }
 
     window.addEventListener('paste', onPaste);
-    window.addEventListener('message', onPreviewMessage);
     return () => {
       disposed = true;
       window.clearTimeout(reconnect);
       socket?.close();
       window.removeEventListener('paste', onPaste);
-      window.removeEventListener('message', onPreviewMessage);
       editor.destroy();
       if (session.current === editor) session.current = undefined;
     };
@@ -510,7 +525,14 @@ export default function App({
     }
     if (connectedPreview.current === document) return;
     connectedPreview.current = document;
-    document.addEventListener('keydown', previewArrows, true);
+    document.addEventListener('keydown', stopSlideArrows, true);
+    document.addEventListener('click', (event) => {
+      const source = previewClick(event.target as Element | null);
+      const editor = session.current;
+      if (!source || !editor) return;
+      flushSync(() => setPane('editor'));
+      editor.revealElement(source);
+    });
     drivePreview(active.current, true);
     document.addEventListener('deck-state', (event) => {
       const next = (event as CustomEvent<PlayerState>).detail;
@@ -524,12 +546,14 @@ export default function App({
   }
 
   useEffect(() => {
-    if (!file || staticMode || clientRender) return;
+    const inlinePreview = staticMode || clientRender;
+    if (!file || (inlinePreview && previewSrcDoc === undefined)) return;
     // Fonts and remote images can hold the iframe's load event after the player is ready.
     const deadline = performance.now() + 10_000;
     const timer = window.setInterval(() => {
       const iframe = frame.current;
-      if (iframe?.contentDocument?.URL.split('#')[0] === iframe?.src.split('#')[0] && player(iframe)) {
+      const previewUrl = inlinePreview ? 'about:srcdoc' : iframe?.src.split('#')[0];
+      if (iframe?.contentDocument?.URL.split('#')[0] === previewUrl && player(iframe)) {
         onPreviewLoad();
         window.clearInterval(timer);
       } else if (performance.now() >= deadline) {
@@ -537,7 +561,7 @@ export default function App({
       }
     }, 60);
     return () => window.clearInterval(timer);
-  }, [file, staticMode, previewUrl, previewRevision, assetRevision]);
+  }, [file, staticMode, clientRender, previewUrl, previewRevision, assetRevision, previewSrcDoc]);
 
   function toggleStepped() {
     byStep.current = !byStep.current;
