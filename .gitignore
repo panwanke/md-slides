@@ -37,6 +37,10 @@ node_modules/
 web/dist/
 web/dist-static/
 web/static-public/
+# WorkBuddy 静态托管产物（由 web/dist-static 复制而来，不入库）
+/release/
+# WorkBuddy 发布器写入的应用绑定标记（工作区级，绝不可入库）
+.wbapp_*.genie
 dist-ssr/
 *.local
 
@@ -66,5 +70,7 @@ ara.yaml
 trace/
 arc/
 docs/plans/
+# 运维 runbook（托管操作属环境特定知识，记录但不入库）
+docs/ops/
 evidence/
 logic/

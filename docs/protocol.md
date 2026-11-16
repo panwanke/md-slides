@@ -77,7 +77,7 @@ Markdown 由请求体提供，服务端不读写任何文档文件。三种来�
 请求：
 
 ```json
-{ "content": "# 标题\n\n---\n\n# 第二页", "theme": "dracula" }
+{ "content": "# 标题\n\n---\n\n# 第二页", "theme": "dracula", "standalone": true }
 ```
 
 成功响应（200）：
@@ -98,9 +98,13 @@ Markdown 语法错误（422）：
 { "detail": "Fragments require a positive step and effect=none|fade|fade-up" }
 ```
 
+`standalone` 默认是 `false`。设为 `true` 时，响应内嵌动画和公式运行时以及公式字体。调用方根据当前工作文件夹或附件目录内嵌文档图片。
+
+`POST /api/ast` 接受 `{"content": "..."}` 并返回 `{"ast": ...}`，用于本地服务工作台打开浏览器选中的 Markdown。
+
 `GET /api/doctor` 额外返回 `statelessRender: true`，供客户端探测该能力。
 
-Python 侧对应 `render.render_text(content, *, theme, extra_scripts, stem)`，
+Python 侧对应 `render.render_text(content, *, theme, extra_scripts, stem, standalone)`，
 返回 `(html, info)`；`render_deck(path)` 只是「读文件 → `render_text` → 可选打包落盘」的薄封装，
 两者生成的 HTML 逐字节一致（回归测试见 `tests/test_render_api.py`）。
 

@@ -33,15 +33,17 @@ Key views and workflows include:
 
 ### GitHub Pages workspace
 
-Open the online editor from the demo and choose **Open workspace folder** (打开工作文件夹). Select a folder containing the Markdown and images. Image paths are relative to each Markdown file, including parent directories within the selected folder. Use angle brackets around paths with spaces, for example `![Figure](<../figures/Figure 1.png>)`.
+In the online editor, choose **Open Markdown** (打开 Markdown) or press `Ctrl/⌘ + O` to edit one local file. For a deck that uses local images, choose **Open workspace folder** (打开工作文件夹), select a folder containing the Markdown and images, then use the dropdown to switch between decks. Image paths are relative to each Markdown file, including parent directories within the selected folder. Use angle brackets around paths with spaces, as in `![Figure](<../figures/Figure 1.png>)`.
 
 HTML export embeds the local images. When your browser grants write access, **Save locally** (保存到本地) writes changes to the original Markdown file. The read-only directory picker supports **Export .md**.
+
+Use **Settings** (设置) to change the shortcuts for opening Markdown, opening a workspace folder, and saving. Shortcuts are stored in your browser. **GitHub · Star** opens the project repository in a new tab.
 
 ### Deck library mode
 
 `serve` starts the same workbench with a sign-in screen and a deck library:
 decks are stored in a server-side SQLite database, every save keeps a full
-revision snapshot, and each account only sees its own decks. Import a folder
+revision snapshot, and each account only sees its own decks. Importing one Markdown file opens it in the editor. Import a folder
 to upload Markdown and images together while preserving their relative paths.
 To add images after import, use the **Images** (图片) panel in the deck editor.
 Uploads are stored under `assets/` in the studio data directory.

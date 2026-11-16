@@ -52,9 +52,6 @@ jobs:
           npm ci
           npm run build:static
           cp -r dist-static/. ../_site/
-          cp ../_site/studio.html ../_site/index.html
-          mkdir -p ../_site/studio
-          cp ../_site/studio.html ../_site/studio/index.html
 
       - name: Add studio link to showcase
         run: |
