@@ -69,12 +69,17 @@ The API contract is documented in [docs/protocol.md](docs/protocol.md).
 git clone https://github.com/panwanke/md-slides.git
 cd md-slides
 
-# Install in development mode
-pip install -e .
-
-# Or install with development & testing dependencies
+# Install Python package with dev & test dependencies
 pip install -e ".[dev]"
+
+# Build the frontend workbench (required once before running edit / serve from source)
+cd web
+npm install
+npm run build
+cd ..
 ```
+
+> **Note**: Command-line rendering (`md-slide-studio render`) is powered solely by the Python engine and **does not require Node.js or frontend building**. Only the interactive browser workbench (`edit` / `serve`) requires the prebuilt frontend assets.
 
 ### CLI & Studio Usage
 
@@ -82,24 +87,24 @@ pip install -e ".[dev]"
 # Check environment health
 md-slide-studio doctor
 
-# Launch the interactive live-editing workbench
+# Launch the interactive live-editing workbench (opens http://localhost:8000)
 md-slide-studio edit sample.md
 
-# Render deck to a standalone HTML file
+# Render deck to a standalone HTML file (pure Python offline engine)
 md-slide-studio render sample.md --out ./dist
 ```
 
 In the studio workbench, live preview is enabled by default. Switch to "Source" to edit raw Markdown tokens, use "Insert Block" to insert callouts, cards, or step-by-step animations, check animation order in "Fragments", and click "Present" to open a presentation window from the current slide.
 
-### Frontend Development (Optional)
+### Frontend Development & Hot Reload
 
-The prebuilt frontend distribution is embedded in the Python package (`src/md_slide_studio/web_dist`). If you want to modify or develop the React studio UI:
+The web studio is built with React 18, Vite, and CodeMirror 6 in the `web/` directory:
 
 ```bash
 cd web
 npm install
 npm run dev    # Start Vite dev server on port 3000 (proxies API to 8000)
-npm run build  # Rebuild and package frontend assets into web_dist
+npm run build  # Rebuild and package frontend assets into src/md_slide_studio/web_dist/
 ```
 
 ## Features

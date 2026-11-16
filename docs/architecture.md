@@ -5,14 +5,14 @@
 ## 1. 模块层次结构
 
 ```text
-src/jc_slide_studio/
+src/md_slide_studio/
 ├── cli.py                 # CLI 命令解析与分发
 ├── document/              # Markdown 解析、AST 遍历、源码区间映射与局部文本替换
 ├── render/                # HTML 模板装配、章节导航注入、动画解析、静态资源内嵌打包
 ├── session/               # 会话状态、版本管理、原子写盘、文件监听与外部变更冲突判定
 ├── server/                # FastAPI 应用实例、REST API 路由、WebSocket 状态广播
 ├── providers/             # 主题资源管理器、播放器运行时包、图件资源适配器
-└── web_dist/              # 生产环境嵌入的已构建前端静态资源
+└── web_dist/              # 生产环境嵌入的已构建前端静态资源（Git 忽略，由 web/ 构建生成）
 ```
 
 ## 2. 状态同步与构建时序

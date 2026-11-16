@@ -127,13 +127,40 @@ async def get_workbench():
     """Serve the bundled workbench without a Node process."""
     index = WORKBENCH_DIST / "index.html"
     if not index.is_file():
-        return HTMLResponse("<p>Build the workbench with npm run build in web/.</p>", status_code=503)
+        return HTMLResponse(
+            """<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Web 工作台尚未构建 · md-slide-studio</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8fafc; color: #1e293b; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+.card { background: #fff; padding: 32px; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 520px; box-shadow: 0 4px 16px rgba(0,0,0,0.05); }
+h2 { margin-top: 0; font-size: 20px; color: #0f172a; }
+p { font-size: 14px; line-height: 1.6; color: #475569; }
+pre { background: #0f172a; color: #f8fafc; padding: 14px 16px; border-radius: 8px; font-size: 13px; overflow-x: auto; }
+.hint { font-size: 12px; color: #94a3b8; margin-bottom: 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>Web 工作台尚未构建 (Workbench Not Built)</h2>
+  <p>从源码运行 Web 工作台前，请先在 <code>web/</code> 目录下安装依赖并执行构建：</p>
+  <pre><code>cd web
+npm install
+npm run build</code></pre>
+  <p class="hint">构建完成后刷新本页即可直接使用。若仅需离线导出演示稿，可直接使用命令行：<code>md-slide-studio render &lt;file.md&gt; --out ./dist</code></p>
+</div>
+</body>
+</html>""",
+            status_code=503,
+        )
     return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/icon.svg")
 async def get_workbench_icon_svg():
     target = WORKBENCH_DIST / "icon.svg"
+    if not target.is_file():
+        target = default_provider.assets_dir / "icon.svg"
     if target.is_file():
         return FileResponse(target, media_type="image/svg+xml")
     raise HTTPException(status_code=404, detail="icon.svg not found")
@@ -144,6 +171,9 @@ async def get_workbench_icon_png():
     target = WORKBENCH_DIST / "icon-32.png"
     if target.is_file():
         return FileResponse(target, media_type="image/png")
+    fallback_svg = default_provider.assets_dir / "icon.svg"
+    if fallback_svg.is_file():
+        return FileResponse(fallback_svg, media_type="image/svg+xml")
     raise HTTPException(status_code=404, detail="icon-32.png not found")
 
 
@@ -153,6 +183,8 @@ async def get_workbench_favicon():
     if target_png.is_file():
         return FileResponse(target_png, media_type="image/png")
     target_svg = WORKBENCH_DIST / "icon.svg"
+    if not target_svg.is_file():
+        target_svg = default_provider.assets_dir / "icon.svg"
     if target_svg.is_file():
         return FileResponse(target_svg, media_type="image/svg+xml")
     raise HTTPException(status_code=404, detail="favicon not found")

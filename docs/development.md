@@ -26,22 +26,23 @@ npm ci
 npm run dev
 ```
 
-在项目根目录运行 `jc-slide-studio edit tests/fixtures/steps.md --no-browser`。Vite 的 `http://localhost:3000/` 会将文档、预览和 WebSocket 请求代理到 `http://127.0.0.1:8000`。
+在项目根目录运行 `md-slide-studio edit tests/fixtures/steps.md --no-browser`。Vite 的 `http://localhost:3000/` 会将文档、预览和 WebSocket 请求代理到 `http://127.0.0.1:8000`。
 
 ## 4. 构建与发布
 
 ```bash
 # 1. 构建前端静态资源
 cd web
+npm install
 npm run build
-# 构建产物将自动输出至 src/jc_slide_studio/web_dist/
+# 构建产物将自动输出至 src/md_slide_studio/web_dist/
 
-# 2. 构建 Python 独立分发包
+# 2. 构建 Python 独立分发包（含已构建的前端资源）
 cd ..
 python -m build
 ```
 
-修改 `web/` 后重新构建，并一并提交 `src/jc_slide_studio/web_dist/`。Python 发行包从该目录提供工作台，运行时无需 Node.js。
+前端产物 `src/md_slide_studio/web_dist/` 已被 Git 忽略，避免将哈希构建物提交到源码库。在发布 Python wheel 包时，Hatchling 会自动读取本地已构建的 `web_dist` 打包入分发物，使 pip 安装的最终用户免装 Node.js 即可运行工作台。
 
 ## 5. 浏览器回归测试
 

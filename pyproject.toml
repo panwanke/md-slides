@@ -37,6 +37,7 @@ md-slide-studio = "md_slide_studio.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/md_slide_studio"]
+artifacts = ["src/md_slide_studio/web_dist"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

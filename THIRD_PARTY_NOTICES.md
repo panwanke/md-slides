@@ -34,5 +34,5 @@ This project incorporates components from or depends upon open-source software:
    - License: MIT License
    - Usage: Authentication, cloud database, and storage in WorkBuddy cloud deployment mode.
 
-The workbench build includes the license texts of bundled runtime dependencies in
+When built, the workbench distribution includes the license texts of bundled runtime dependencies in
 `src/md_slide_studio/web_dist/THIRD_PARTY_LICENSES.txt`.

@@ -66,12 +66,17 @@ md-slide-studio serve --port 9000
 git clone https://github.com/panwanke/md-slides.git
 cd md-slides
 
-# 开发模式安装核心包
-pip install -e .
-
-# 或包含测试与开发依赖安装
+# 安装 Python 核心包与开发依赖
 pip install -e ".[dev]"
+
+# 构建前端工作台（从源码运行 edit / serve 需先构建一次前端）
+cd web
+npm install
+npm run build
+cd ..
 ```
+
+> **提示**：如果仅使用命令行离线渲染（`md-slide-studio render`），完全由内置 Python 引擎执行，**无需安装 Node.js 或构建前端**；仅当启动浏览器端交互工作台（`edit` 或 `serve`）时需要前端静态产物。
 
 ### CLI 与工作台使用
 
@@ -79,24 +84,24 @@ pip install -e ".[dev]"
 # 环境健康体检
 md-slide-studio doctor
 
-# 启动本地实时编辑工作台
+# 启动本地实时编辑工作台（浏览器打开 http://localhost:8000）
 md-slide-studio edit sample.md
 
-# 编译为单文件离线 HTML
+# 编译为单文件离线 HTML（纯 Python 离线引擎，秒级导出）
 md-slide-studio render sample.md --out ./dist
 ```
 
 工作台默认打开「实时」编辑排版模式。点「源码」可编辑原始 Markdown 标记；讲稿、重点卡片与分步动画可直接通过顶部「插入块」添加；右侧「分步」面板用于查看和调整动画播放顺序；顶栏「演示」按钮可从当前页全屏打开独立播放窗口。
 
-### 前端开发（可选）
+### 前端开发与热更新调试
 
-工作台编译后的前端静态资源已内置于 Python 包（`src/md_slide_studio/web_dist`）。如需二次开发 React 前端：
+前端基于 React 18 + Vite + CodeMirror 6，源码位于 `web/` 目录。二次开发时支持热更新：
 
 ```bash
 cd web
 npm install
 npm run dev    # 启动 Vite 开发服务（默认端口 3000，API 代理至 8000）
-npm run build  # 重新打包构建前端产物至 web_dist
+npm run build  # 重新打包构建前端产物至 src/md_slide_studio/web_dist/
 ```
 
 ## 功能特性

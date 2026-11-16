@@ -43,6 +43,7 @@ web/dist/
 web/dist-static/
 web/dist-cloud/
 web/static-public/
+src/md_slide_studio/web_dist/
 # WorkBuddy 静态托管产物（由 web/dist-static 复制而来，不入库）
 /release/
 # WorkBuddy 发布器写入的应用绑定标记（工作区级，绝不可入库）
