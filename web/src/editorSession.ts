@@ -40,7 +40,7 @@ export interface Deck {
   documentRevision: number;
   slides: Slide[];
   sections: Section[];
-  frontmatter: { title?: string; jc?: { title?: string } };
+  frontmatter: { title?: string; jc?: { title?: string }; md_slide?: { title?: string } };
 }
 
 export type SaveStatus =
@@ -52,6 +52,7 @@ interface Callbacks {
   onSave: (deck: Deck) => void;
   onStatus: (status: SaveStatus) => void;
   onCursor: (page: number, line: number, column: number, layout: string) => void;
+  onChange?: (content: string) => void;
 }
 
 interface Snapshot {
@@ -123,6 +124,7 @@ export class EditorSession {
                 const snapshot = this.snapshot!;
                 snapshot.changes = snapshot.changes.composeDesc(update.changes);
                 if (this.inflight) this.inflight.changes = this.inflight.changes.composeDesc(update.changes);
+                this.callbacks.onChange?.(update.state.doc.toString());
                 this.callbacks.onStatus('pending');
                 this.scheduleSave();
               }

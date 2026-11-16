@@ -29,9 +29,11 @@ export default function Shell() {
     const onChange = () => setHash(location.hash);
     const onUnauthorized = () => setUser(null);
     window.addEventListener('hashchange', onChange);
+    window.addEventListener('md-slide-studio-unauthorized', onUnauthorized);
     window.addEventListener('jc-studio-unauthorized', onUnauthorized);
     return () => {
       window.removeEventListener('hashchange', onChange);
+      window.removeEventListener('md-slide-studio-unauthorized', onUnauthorized);
       window.removeEventListener('jc-studio-unauthorized', onUnauthorized);
     };
   }, []);

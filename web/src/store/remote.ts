@@ -40,6 +40,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     } catch { /* non-JSON error */ }
     if (response.status === 401) {
       // Let the shell drop its in-memory user so the login view actually shows.
+      window.dispatchEvent(new CustomEvent('md-slide-studio-unauthorized'));
       window.dispatchEvent(new CustomEvent('jc-studio-unauthorized'));
       location.hash = '#/login';
       throw new Error(message);

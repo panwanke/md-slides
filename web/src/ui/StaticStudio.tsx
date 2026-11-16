@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, basicSetup } from 'codemirror';
-import { markdown } from '@codemirror/lang-markdown';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { FolderUp, Save, Upload } from 'lucide-react';
+import Workbench from '../App';
 import { listThemes, renderMarkdown } from '../render/pyodideEngine';
 import { embedWorkspaceImages } from '../render/workspaceImages';
+import { StaticDeckStore } from '../store/staticStore';
 import { workspaceFromDirectory, workspaceFromFiles } from '../store/workspace';
 import type { DirectoryPicker, Workspace } from '../store/workspace';
-import './static.css';
+import '../workbench.css';
 
 const SAMPLE = `---
-jc:
+md_slide:
   title: 我的第一份演示稿
   theme: academic-paper
   lang: zh
@@ -40,26 +40,6 @@ jc:
 
 type Status = 'booting' | 'ready' | 'rendering' | 'error';
 
-const editability = new Compartment();
-
-function editorState(content: string, onChange: (content: string) => void) {
-  return EditorState.create({
-    doc: content,
-    extensions: [
-      basicSetup,
-      markdown(),
-      editability.of(EditorView.editable.of(true)),
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged) onChange(update.state.doc.toString());
-      }),
-      EditorView.theme({
-        '&': { height: '100%', fontSize: '13px' },
-        '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.65' },
-      }),
-    ],
-  });
-}
-
 function download(filename: string, text: string, mime: string) {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
   const anchor = document.createElement('a');
@@ -73,9 +53,9 @@ export default function StaticStudio() {
   const [content, setContent] = useState(SAMPLE);
   const [savedContent, setSavedContent] = useState(SAMPLE);
   const [workspace, setWorkspace] = useState<Workspace>();
-  const [documentPath, setDocumentPath] = useState('');
+  const [documentPath, setDocumentPath] = useState('sample.md');
   const [fileBusy, setFileBusy] = useState(false);
-  const [fileError, setFileError] = useState('');
+  const [, setFileError] = useState('');
   const [rendered, setRendered] = useState<{
     html: string;
     previewHtml: string;
@@ -90,8 +70,6 @@ export default function StaticStudio() {
   const [status, setStatus] = useState<Status>('booting');
   const [error, setError] = useState('');
   const [slideCount, setSlideCount] = useState(0);
-  const editorHost = useRef<HTMLDivElement>(null);
-  const editorView = useRef<EditorView | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
   const dirty = content !== savedContent;
@@ -113,56 +91,72 @@ export default function StaticStudio() {
     void listThemes().then(setThemes).catch(() => setThemes([]));
   }, []);
 
-  useEffect(() => {
-    if (!editorHost.current) return;
-    const view = new EditorView({
-      state: editorState(SAMPLE, setContent),
-      parent: editorHost.current,
+  const store = useMemo(() => {
+    return new StaticDeckStore({
+      initialContent: content,
+      documentPath,
+      theme,
+      onRender: async (rawHtml, newContent, newTheme, ast) => {
+        setContent(newContent);
+        try {
+          const output = await embedWorkspaceImages(rawHtml, workspace, documentPath);
+          setRendered({ ...output, content: newContent, theme: newTheme, workspace, documentPath });
+          setSlideCount(ast.slides.length);
+          setError('');
+          setStatus('ready');
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+          setStatus('error');
+        }
+      },
     });
-    editorView.current = view;
+  }, [documentPath, workspace]);
+
+  // Keep theme in store updated
+  useEffect(() => {
+    store.setTheme(theme);
+    if (status === 'ready') {
+      void renderMarkdown(content, theme).then(async (res) => {
+        const output = await embedWorkspaceImages(res.html, workspace, documentPath);
+        setRendered({ ...output, content, theme, workspace, documentPath });
+      });
+    }
+  }, [theme]);
+
+  // Initial render on boot
+  useEffect(() => {
+    let cancelled = false;
+    setStatus('rendering');
+    void renderMarkdown(content, theme)
+      .then(async (result) => {
+        if (cancelled) return;
+        const output = await embedWorkspaceImages(result.html, workspace, documentPath);
+        if (cancelled) return;
+        setRendered({ ...output, content, theme, workspace, documentPath });
+        setSlideCount(result.slideCount);
+        setError('');
+        setStatus('ready');
+      })
+      .catch((reason: unknown) => {
+        if (cancelled) return;
+        setError(reason instanceof Error ? reason.message : String(reason));
+        setStatus('error');
+      });
     return () => {
-      view.destroy();
-      editorView.current = null;
+      cancelled = true;
     };
   }, []);
 
-  useEffect(() => {
-    editorView.current?.dispatch({ effects: editability.reconfigure(EditorView.editable.of(!fileBusy)) });
-  }, [fileBusy]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setStatus('rendering');
-      void renderMarkdown(content, theme)
-        .then(async (result) => {
-          if (cancelled) return;
-          const output = await embedWorkspaceImages(result.html, workspace, documentPath);
-          if (cancelled) return;
-          setRendered({ ...output, content, theme, workspace, documentPath });
-          setSlideCount(result.slideCount);
-          setError('');
-          setStatus('ready');
-        })
-        .catch((reason: unknown) => {
-          if (cancelled) return;
-          setError(reason instanceof Error ? reason.message : String(reason));
-          setStatus('error');
-        });
-    }, 320);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [content, theme, workspace, documentPath]);
-
-  function replaceContent(text: string) {
+  function replaceContent(text: string, path: string) {
     setContent(text);
     setSavedContent(text);
-    const view = editorView.current;
-    if (view) {
-      view.setState(editorState(text, setContent));
-    }
+    setDocumentPath(path);
+    store.setDocument(path, text);
+    void renderMarkdown(text, theme).then(async (res) => {
+      const output = await embedWorkspaceImages(res.html, workspace, path);
+      setRendered({ ...output, content: text, theme, workspace, documentPath: path });
+      setSlideCount(res.slideCount);
+    });
   }
 
   async function importMarkdown(file?: File) {
@@ -172,8 +166,7 @@ export default function StaticStudio() {
     await handleFileAction(async () => {
       const text = await file.text();
       setWorkspace(undefined);
-      setDocumentPath(file.name);
-      replaceContent(text);
+      replaceContent(text, file.name);
     });
   }
 
@@ -199,8 +192,7 @@ export default function StaticStudio() {
     if (!file) throw new Error('找不到选中的 Markdown 文件');
     const text = await file.text();
     setWorkspace(folder);
-    setDocumentPath(path);
-    replaceContent(text);
+    replaceContent(text, path);
   }
 
   async function openWorkspace(folder: Workspace) {
@@ -244,17 +236,39 @@ export default function StaticStudio() {
     error: '渲染失败',
   };
 
+  const currentStatusText = error
+    ? `渲染失败：${error}`
+    : rendered?.missing?.length
+    ? `就绪 · 缺少 ${rendered.missing.length} 张图片 (${rendered.missing.join(', ')})`
+    : statusText[status];
+
   return (
-    <div className="studio">
-      <header className="studio-header">
-        <div className="studio-brand">
-          <span className="studio-mark">jc</span>
-          <div>
-            <h1>Slide Studio</h1>
-            <p>浏览器内运行 Python 渲染引擎，无需登录、无需后端</p>
+    <Workbench
+      key={documentPath}
+      staticMode
+      store={store}
+      onDocChange={(newContent) => setContent(newContent)}
+      previewSrcDoc={rendered?.previewHtml}
+      staticStatusText={currentStatusText}
+      workspaceSelect={
+        workspace && workspace.documents.length > 0 ? (
+          <div className="open-file" style={{ marginLeft: '12px' }}>
+            <select
+              aria-label="工作文件夹中的 Markdown"
+              value={documentPath}
+              className="button"
+              style={{ padding: '4px 8px', fontSize: '13px' }}
+              onChange={(event) => void handleFileAction(() => openDocument(workspace, event.target.value))}
+            >
+              {workspace.documents.map((doc) => (
+                <option key={doc} value={doc}>{doc}</option>
+              ))}
+            </select>
           </div>
-        </div>
-        <div className="studio-actions">
+        ) : null
+      }
+      headerActions={
+        <>
           <input
             ref={folderInput}
             type="file"
@@ -262,7 +276,9 @@ export default function StaticStudio() {
             hidden
             onChange={(event) => importWorkspace(event.target.files)}
           />
-          <button type="button" disabled={fileBusy} onClick={chooseWorkspace}>打开工作文件夹</button>
+          <button type="button" className="button" disabled={fileBusy} onClick={chooseWorkspace} title="打开包含 Markdown 与图片的本地文件夹">
+            <FolderUp size={15} /><span>打开工作文件夹</span>
+          </button>
           <input
             ref={fileInput}
             type="file"
@@ -270,84 +286,53 @@ export default function StaticStudio() {
             hidden
             onChange={(event) => void importMarkdown(event.target.files?.[0])}
           />
-          <button type="button" disabled={fileBusy} onClick={() => fileInput.current?.click()}>导入 .md</button>
+          <button type="button" className="button" disabled={fileBusy} onClick={() => fileInput.current?.click()} title="导入单个 Markdown 文件">
+            <Upload size={15} /><span>导入 .md</span>
+          </button>
           {workspace?.save && (
-            <button type="button" disabled={fileBusy || !dirty} onClick={saveDocument}>保存到本地</button>
+            <button type="button" className="button" disabled={fileBusy || !dirty} onClick={saveDocument} title="直接写回本地文件">
+              <Save size={15} /><span>保存到本地</span>
+            </button>
           )}
-          <button type="button" onClick={() => download(filename, content, 'text/markdown;charset=utf-8')}>
-            导出 .md
+          {dirty && (
+            <span style={{ color: '#f59e0b', fontSize: '13px', fontWeight: 500 }}>
+              未保存
+            </span>
+          )}
+          <button type="button" className="button" onClick={() => download(filename, content, 'text/markdown;charset=utf-8')} title="导出 Markdown 源码文件">
+            <span>导出 .md</span>
           </button>
           <button
             type="button"
+            className="button"
             disabled={!currentRender}
-            onClick={() => rendered && download(filename.replace(/\.[^.]+$/, '') + '.html', rendered.html, 'text/html;charset=utf-8')}
+            onClick={() => download(filename.replace(/\.[^.]+$/, '') + '.html', rendered?.html || '', 'text/html;charset=utf-8')}
+            title="编译打包为独立离线 HTML 演示稿"
           >
-            导出 .html
+            <span>导出 .html</span>
           </button>
-          <label className="studio-theme">
-            主题
-            <select value={theme} onChange={(event) => setTheme(event.target.value)}>
-              {(themes.length ? themes : [theme]).map((name) => (
-                <option key={name} value={name}>{name}</option>
+          {themes.length > 0 && (
+            <select
+              aria-label="主题"
+              value={theme}
+              className="button theme-select"
+              style={{ padding: '4px 8px', fontSize: '13px' }}
+              onChange={(event) => setTheme(event.target.value)}
+              title="切换全局演示主题"
+            >
+              {themes.map((t) => (
+                <option key={t} value={t}>{t}</option>
               ))}
             </select>
-          </label>
-        </div>
-      </header>
-
-      <main className="studio-body">
-        <section className="studio-pane">
-          <div className="studio-pane-label studio-document">
-            {workspace ? (
-              <>
-                <span>{workspace.name}</span>
-                <select
-                  aria-label="工作文件夹中的 Markdown"
-                  value={documentPath}
-                  disabled={fileBusy}
-                  onChange={(event) => {
-                    const path = event.target.value;
-                    if (canReplace()) void handleFileAction(() => openDocument(workspace, path));
-                  }}
-                >
-                  {workspace.documents.map((path) => <option key={path} value={path}>{path}</option>)}
-                </select>
-              </>
-            ) : <span>{documentPath || 'Markdown 源码'}</span>}
-            {dirty && <span>未保存</span>}
-          </div>
-          <div ref={editorHost} className="studio-editor" />
-        </section>
-        <section className="studio-pane">
-          <div className="studio-pane-label">实时预览</div>
-          {rendered ? (
-            <iframe
-              className="studio-preview"
-              title="幻灯片预览"
-              sandbox="allow-scripts"
-              srcDoc={rendered.previewHtml}
-            />
-          ) : (
-            <div className="studio-placeholder">
-              {status === 'error' ? '渲染失败，请检查下方提示' : '正在准备预览…'}
-            </div>
           )}
-        </section>
-      </main>
-
-      <footer className={`studio-status studio-status-${status}`}>
-        <span>{statusText[status]}</span>
-        {error ? <span className="studio-error">{error}</span> : null}
-        {fileError && <span className="studio-error" role="alert">{fileError}</span>}
-        {currentRender && rendered.missing.length > 0 && (
-          <span className="studio-error" title={rendered.missing.join('\n')}>
-            缺少 {rendered.missing.length} 张图片 · {rendered.missing[0]}
-          </span>
-        )}
-        <span className="studio-note">
-          {workspace && !workspace.save ? '文件夹只读，编辑后请导出 .md' : '文件在浏览器内处理'}
-        </span>
-      </footer>
-    </div>
+        </>
+      }
+      onPresent={(page) => {
+        if (!rendered?.html) return;
+        const blob = new Blob([rendered.html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        window.open(`${url}#/${page}`, '_blank');
+      }}
+    />
   );
 }

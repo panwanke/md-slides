@@ -1,3 +1,5 @@
+import type { Deck } from '../editorSession';
+
 // Runs the real Python rendering engine inside the browser via Pyodide.
 // Static mode (A) only: no /api calls, no WebSocket, no persistence.
 export interface RenderResult {
@@ -5,6 +7,7 @@ export interface RenderResult {
   slideCount: number;
   title: string;
   theme: string;
+  ast: Deck;
 }
 
 interface PyodideLike {
@@ -14,7 +17,7 @@ interface PyodideLike {
   };
   runPython(code: string): unknown;
   globals: {
-    get(name: string): (content: string, theme: string) => string;
+    get(name: string): (content: string, theme?: string) => string;
   };
 }
 
@@ -59,16 +62,23 @@ async function boot(): Promise<PyodideLike> {
   py.runPython(`
 import sys, json
 sys.path.insert(0, '/app')
-from jc_slide_studio.render.engine import render_text
+from md_slide_studio.document.parser import build_document_ast
+from md_slide_studio.render.engine import render_text
 
-def jc_render(content, theme):
+def md_render(content, theme):
     html, info = render_text(content, theme=theme or None)
     return json.dumps({
         'html': html,
         'slideCount': info['slideCount'],
         'title': info['title'],
         'theme': info['theme'],
+        'ast': build_document_ast(content),
     })
+
+jc_render = md_render
+
+def md_ast(content):
+    return json.dumps(build_document_ast(content))
 `);
   return py;
 }
@@ -91,8 +101,15 @@ export function warmEngine(): Promise<PyodideLike> {
 /** Render Markdown with exactly the same engine as the local CLI. */
 export async function renderMarkdown(content: string, theme?: string): Promise<RenderResult> {
   const py = await getRuntime();
-  const raw = py.globals.get('jc_render')(content, theme ?? '');
+  const raw = py.globals.get('md_render')(content, theme ?? '');
   return JSON.parse(raw) as RenderResult;
+}
+
+/** Build document AST in browser using Pyodide. */
+export async function buildAst(content: string): Promise<Deck> {
+  const py = await getRuntime();
+  const raw = py.globals.get('md_ast')(content);
+  return JSON.parse(raw) as Deck;
 }
 
 /** List bundled themes without booting Python. */

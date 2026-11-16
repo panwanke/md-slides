@@ -15,7 +15,7 @@ import type { DeckStore } from './store/types';
 import { mediaFile } from './store/workspace';
 import './workbench.css';
 
-interface WorkbenchProps {
+export interface WorkbenchProps {
   /** Storage implementation. Omitted in local-file mode. */
   store?: DeckStore;
   deckId?: number;
@@ -26,6 +26,14 @@ interface WorkbenchProps {
   /** When provided, the header offers a way back to the deck library. */
   onExit?: () => void;
   userLabel?: string;
+  /** Static mode options (for GitHub Pages / pure client) */
+  staticMode?: boolean;
+  previewSrcDoc?: string;
+  staticStatusText?: string;
+  workspaceSelect?: React.ReactNode;
+  headerActions?: React.ReactNode;
+  onPresent?: (page: number) => void;
+  onDocChange?: (content: string) => void;
 }
 
 type Pane = 'outline' | 'editor' | 'preview';
@@ -63,7 +71,7 @@ const layoutLabels = new Map<string, string>(layouts);
 const pageNumber = (page: number) => String(page).padStart(2, '0');
 
 function slideTitle(slide: SlideSummary, deck: Deck) {
-  if (slide.layout === 'cover') return deck.frontmatter.jc?.title || deck.frontmatter.title || slide.title;
+  if (slide.layout === 'cover') return deck.frontmatter.md_slide?.title || deck.frontmatter.jc?.title || deck.frontmatter.title || slide.title;
   return slide.title === `Slide ${slide.index}` ? '未命名幻灯片' : slide.title;
 }
 
@@ -73,7 +81,8 @@ function player(frame: HTMLIFrameElement | null) {
 
 function readSplit() {
   try {
-    const saved = JSON.parse(localStorage.getItem('jc-studio-workbench-split') || '{}');
+    const raw = localStorage.getItem('md-slide-studio-workbench-split') || localStorage.getItem('jc-studio-workbench-split') || '{}';
+    const saved = JSON.parse(raw);
     return {
       outline: Number.isFinite(saved.outline) ? Math.max(160, Math.min(360, saved.outline)) : 230,
       editor: Number.isFinite(saved.editor) ? Math.min(0.72, Math.max(0.28, saved.editor)) : 0.47,
@@ -131,6 +140,13 @@ export default function App({
   presentUrl = '/preview/live',
   onExit,
   userLabel,
+  staticMode = false,
+  previewSrcDoc,
+  staticStatusText,
+  workspaceSelect,
+  headerActions,
+  onPresent,
+  onDocChange,
 }: WorkbenchProps = {}) {
   const [file, setFile] = useState<{ source: string; fullPath: string }>();
   const [deck, setDeck] = useState<Deck>();
@@ -200,6 +216,7 @@ export default function App({
       onLoad(doc) { setFile(doc); setDeck(doc.ast); showRevision(doc.ast.documentRevision); },
       onSave(next) { setDeck(next); showRevision(next.documentRevision); },
       onStatus: setStatus,
+      onChange: onDocChange,
       onCursor(page, line, column, layout) {
         setCursor({ line, column, layout });
         if (active.current === page) return;
@@ -215,16 +232,19 @@ export default function App({
     let socket: WebSocket | undefined;
     let reconnect = 0;
     function connect() {
-      const url = new URL('/ws', location.href);
-      url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      socket = new WebSocket(url);
-      socket.onmessage = (event: MessageEvent<string>) => {
-        const message = JSON.parse(event.data);
-        if (message.type === 'RELOAD' && Number.isInteger(message.revision)) showRevision(message.revision);
-      };
-      socket.onclose = () => { if (!disposed) reconnect = window.setTimeout(connect, 1000); };
+      if (staticMode) return;
+      try {
+        const url = new URL('/ws', location.href);
+        url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        socket = new WebSocket(url);
+        socket.onmessage = (event: MessageEvent<string>) => {
+          const message = JSON.parse(event.data);
+          if (message.type === 'RELOAD' && Number.isInteger(message.revision)) showRevision(message.revision);
+        };
+        socket.onclose = () => { if (!disposed) reconnect = window.setTimeout(connect, 1000); };
+      } catch { /* ignore in static mode */ }
     }
-    connect();
+    if (!staticMode) connect();
 
     function saveShortcut(event: globalThis.KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -233,7 +253,8 @@ export default function App({
       }
     }
     function onPreviewMessage(event: MessageEvent<PreviewClick & { type?: string }>) {
-      if (event.source !== frame.current?.contentWindow || event.origin !== location.origin) return;
+      if (event.source !== frame.current?.contentWindow) return;
+      if (!staticMode && event.origin !== location.origin) return;
       if (event.data?.type === 'ELEMENT_CLICKED') editor.revealElement(event.data);
     }
     function onPaste(event: ClipboardEvent) {
@@ -372,7 +393,7 @@ export default function App({
   }, [insertMenu]);
 
   useEffect(() => {
-    try { localStorage.setItem('jc-studio-workbench-split', JSON.stringify(split)); } catch { /* Optional. */ }
+    try { localStorage.setItem('md-slide-studio-workbench-split', JSON.stringify(split)); } catch { /* Optional. */ }
   }, [split]);
 
   function navigate(page: number) {
@@ -474,16 +495,22 @@ export default function App({
         <div className="open-file" title={file?.fullPath}><FileText size={16} />
           <span id="fileNameDisplay">{file?.source ?? (status === 'load-error' ? '未加载文件' : '正在打开稿件…')}</span>
         </div>
+        {workspaceSelect}
         <div className="document-actions">
+          {headerActions}
           {onExit && <button type="button" className="button" onClick={onExit} title="返回幻灯片库">
             <ChevronLeft size={16} /><span>幻灯片库</span>
           </button>}
           {userLabel && <span className="user-chip" title={userLabel}>{userLabel}</span>}
-          <span id="saveStatus" className="save-status" data-state={status} role="status">{statusLabels[status]}</span>
-          <button type="button" className="button save-button" aria-label="保存" title="保存（Ctrl/⌘ + S）"
-            disabled={!file || status === 'saving'} onClick={() => void session.current?.save()}>
-            <Save size={16} /><span>保存</span>
-          </button>
+          <span id="saveStatus" className={`save-status ${staticMode ? 'studio-status' : ''}`} data-state={status} role="status">
+            {staticStatusText || statusLabels[status]}
+          </span>
+          {!staticMode && (
+            <button type="button" className="button save-button" aria-label="保存" title="保存（Ctrl/⌘ + S）"
+              disabled={!file || status === 'saving'} onClick={() => void session.current?.save()}>
+              <Save size={16} /><span>保存</span>
+            </button>
+          )}
           {deckId && (
             <button
               type="button"
@@ -494,9 +521,15 @@ export default function App({
               <ImageIcon size={16} /><span>图片</span>
             </button>
           )}
-          <a className="button present-button" href={`${presentUrl}#/${activePage}`} target="_blank" rel="noreferrer">
-            <Monitor size={16} /><span>演示</span><ArrowUpRight className="external-icon" size={13} />
-          </a>
+          {onPresent ? (
+            <button type="button" className="button present-button" onClick={() => onPresent(activePage)} title="全屏演示当前幻灯片">
+              <Monitor size={16} /><span>演示</span><ArrowUpRight className="external-icon" size={13} />
+            </button>
+          ) : (
+            <a className="button present-button" href={`${presentUrl}#/${activePage}`} target="_blank" rel="noreferrer">
+              <Monitor size={16} /><span>演示</span><ArrowUpRight className="external-icon" size={13} />
+            </a>
+          )}
         </div>
       </header>
 
@@ -598,7 +631,7 @@ export default function App({
               </div>
             </div>
           </div>
-          <div className="editor-host" id="editor" data-mode={mode} ref={host} />
+          <div className="editor-host studio-editor" id="editor" data-mode={mode} ref={host} />
           {!file && (
             <div className="editor-empty">
               <FileText size={25} />
@@ -631,10 +664,16 @@ export default function App({
             <div className="frame-fit" ref={stage}>
               {file && <div className="frame-assembly" style={{ width: 1280 * scale }}>
                 <div className="frame-box" style={{ height: 720 * scale }}>
-                  <iframe id="previewFrame" title="当前幻灯片" ref={frame}
-                    src={`${previewUrl}?revision=${previewRevision}${deckId ? '&assets=' + assetRevision : ''}`}
+                  <iframe
+                    id="previewFrame"
+                    className="studio-preview"
+                    title="当前幻灯片"
+                    ref={frame}
+                    src={staticMode ? undefined : `${previewUrl}?revision=${previewRevision}${deckId ? '&assets=' + assetRevision : ''}`}
+                    srcDoc={staticMode ? previewSrcDoc : undefined}
                     onLoad={onPreviewLoad}
-                    style={{ transform: `scale(${scale})` }} />
+                    style={{ transform: `scale(${scale})` }}
+                  />
                 </div>
                 {selected && <p className="preview-caption" title={slideTitle(selected, deck!)}>{slideTitle(selected, deck!)}</p>}
               </div>}

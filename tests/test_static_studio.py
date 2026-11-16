@@ -44,9 +44,9 @@ def test_engine_bundle_is_self_contained(tmp_path):
 import sys, json, pathlib
 root = pathlib.Path(sys.argv[1])
 sys.path.insert(0, str(root))
-from jc_slide_studio.render import engine
+from md_slide_studio.render import engine
 assert pathlib.Path(engine.__file__).resolve().is_relative_to(root.resolve()), engine.__file__
-from jc_slide_studio.render.engine import render_text
+from md_slide_studio.render.engine import render_text
 html, info = render_text('# A\\n\\n---\\n\\n# B', theme='academic-paper')
 print(json.dumps({'html': html, 'slideCount': info['slideCount']}))
 """
@@ -59,15 +59,15 @@ print(json.dumps({'html': html, 'slideCount': info['slideCount']}))
     payload = json.loads(result.stdout)
     assert payload["slideCount"] == 2
 
-    from jc_slide_studio.render.engine import render_text
+    from md_slide_studio.render.engine import render_text
 
     expected, _ = render_text(SAMPLE, theme="academic-paper")
     assert payload["html"] == expected, "browser engine output must match the CLI byte for byte"
 
 
 @pytest.mark.skipif(
-    os.environ.get("JC_TEST_STATIC") != "1",
-    reason="opt-in: boots Pyodide in a browser (JC_TEST_STATIC=1)",
+    os.environ.get("MD_TEST_STATIC") != "1" and os.environ.get("JC_TEST_STATIC") != "1",
+    reason="opt-in: boots Pyodide in a browser (MD_TEST_STATIC=1)",
 )
 def test_static_studio_renders_in_browser(tmp_path):
     if not (DIST / "studio.html").is_file():
@@ -95,7 +95,7 @@ def test_static_studio_renders_in_browser(tmp_path):
             assert frame.locator("section.slide").count() >= 3
             assert "渲染失败" not in page.locator(".studio-status").inner_text()
             active_slide = frame.locator("section.slide.is-active")
-            assert active_slide.evaluate("(slide) => slide.ownerDocument.defaultView.JCDeck.goTo(2).page") == 2
+            assert active_slide.evaluate("(slide) => (slide.ownerDocument.defaultView.MDDeck || slide.ownerDocument.defaultView.JCDeck).goTo(2).page") == 2
 
             workspace = tmp_path / "workspace"
             (workspace / "talks" / "images").mkdir(parents=True)

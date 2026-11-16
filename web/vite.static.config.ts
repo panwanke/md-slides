@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // Separate build for the GitHub Pages static studio (mode A).
-// Nothing here touches the normal workbench build (src/jc_slide_studio/web_dist).
+// Nothing here touches the normal workbench build (src/md_slide_studio/web_dist).
 export default defineConfig({
   plugins: [react()],
   publicDir: 'static-public',

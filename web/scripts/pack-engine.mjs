@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(webRoot, '..');
-const pkgRoot = path.join(repoRoot, 'src', 'jc_slide_studio');
+const pkgRoot = path.join(repoRoot, 'src', 'md_slide_studio');
 const outDir = path.join(webRoot, 'static-public');
 const pyodidePkg = path.join(webRoot, 'node_modules', 'pyodide');
 
@@ -32,19 +32,19 @@ function collectAssets(dir, prefix, out) {
     if (statSync(full).isDirectory()) {
       collectAssets(full, rel, out);
     } else {
-      out[`jc_slide_studio/providers/assets/${rel}`] = readFileSync(full, 'utf8');
+      out[`md_slide_studio/providers/assets/${rel}`] = readFileSync(full, 'utf8');
     }
   }
 }
 
 const files = {};
 for (const rel of MODULES) {
-  files[`jc_slide_studio/${rel}`] = readFileSync(path.join(pkgRoot, rel), 'utf8');
+  files[`md_slide_studio/${rel}`] = readFileSync(path.join(pkgRoot, rel), 'utf8');
 }
 collectAssets(path.join(pkgRoot, 'providers', 'assets'), '', files);
 
 const themes = Object.keys(files)
-  .filter((key) => key.startsWith('jc_slide_studio/providers/assets/themes/') && key.endsWith('.css'))
+  .filter((key) => key.startsWith('md_slide_studio/providers/assets/themes/') && key.endsWith('.css'))
   .map((key) => path.basename(key, '.css'))
   .sort();
 

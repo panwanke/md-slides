@@ -37,7 +37,7 @@ export default defineConfig(({ command }) => ({
   plugins: [react(), bundleLicenses()],
   base: command === 'build' ? '/workbench/' : '/',
   build: {
-    outDir: '../src/jc_slide_studio/web_dist',
+    outDir: '../src/md_slide_studio/web_dist',
     emptyOutDir: true,
     rollupOptions: {
       output: {
