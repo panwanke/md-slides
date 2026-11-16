@@ -290,3 +290,98 @@ def test_workspace_toolbar_and_custom_shortcuts(tmp_path):
         finally:
             server.shutdown()
             thread.join(timeout=5)
+
+
+@pytest.mark.skipif(
+    os.environ.get("MD_TEST_STATIC") != "1" and os.environ.get("JC_TEST_STATIC") != "1",
+    reason="opt-in: boots Pyodide in a browser (MD_TEST_STATIC=1)",
+)
+def test_session_restore_and_external_file_change():
+    """A reloaded page recovers the open project and reacts to edits made outside the editor."""
+    if not (DIST / "index.html").is_file():
+        pytest.skip("run `npm run build:static` first")
+
+    from playwright.sync_api import sync_playwright
+
+    handler = partial(SimpleHTTPRequestHandler, directory=str(DIST))
+    with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                page = browser.new_page()
+                page_errors = []
+                page.on("pageerror", lambda error: page_errors.append(str(error)))
+                page.add_init_script("""
+                  navigator.storage.getDirectory().then((root) => {
+                    window.showDirectoryPicker = async () => root;
+                  });
+                """)
+                url = f"http://127.0.0.1:{server.server_port}/studio.html"
+                page.goto(url)
+                page.wait_for_function("document.body.innerText.includes('就绪')", timeout=180_000)
+
+                page.evaluate("""async () => {
+                  const root = await navigator.storage.getDirectory();
+                  const writer = await (await root.getFileHandle('restore.md', { create: true })).createWritable();
+                  await writer.write('# Restored deck');
+                  await writer.close();
+                }""")
+                page.get_by_role("button", name="文件", exact=True).click()
+                page.get_by_role("button", name="打开工作文件夹").click()
+                selector = page.get_by_label("工作文件夹中的 Markdown")
+                selector.wait_for()
+                assert selector.input_value() == "restore.md"
+                editor = page.locator(".studio-editor .cm-content")
+                editor.get_by_text("Restored deck", exact=True).wait_for()
+
+                page.wait_for_function("""async () => {
+                  const db = await new Promise((resolve, reject) => {
+                    const request = indexedDB.open('md-slide-studio-workspace', 2);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                  });
+                  const value = await new Promise((resolve) => {
+                    const request = db.transaction('session').objectStore('session').get('current');
+                    request.onsuccess = () => resolve(request.result);
+                  });
+                  db.close();
+                  return Array.isArray(value?.tabs) && value.tabs.length > 0;
+                }""", timeout=10_000)
+
+                page.reload()
+                page.wait_for_function("document.body.innerText.includes('就绪')", timeout=180_000)
+                restore_button = page.get_by_role("button", name="恢复会话")
+                if restore_button.count():
+                    restore_button.click()
+                selector = page.get_by_label("工作文件夹中的 Markdown")
+                selector.wait_for(timeout=30_000)
+                assert selector.input_value() == "restore.md"
+                editor = page.locator(".studio-editor .cm-content")
+                editor.get_by_text("Restored deck", exact=True).wait_for(timeout=10_000)
+
+                page.evaluate("""async () => {
+                  const root = await navigator.storage.getDirectory();
+                  const writer = await (await root.getFileHandle('restore.md')).createWritable();
+                  await writer.write('# Changed outside');
+                  await writer.close();
+                }""")
+                editor.get_by_text("Changed outside", exact=True).wait_for(timeout=15_000)
+
+                editor.fill("# Local edit")
+                page.evaluate("""async () => {
+                  const root = await navigator.storage.getDirectory();
+                  const writer = await (await root.getFileHandle('restore.md')).createWritable();
+                  await writer.write('# Outside again');
+                  await writer.close();
+                }""")
+                page.get_by_text("本地文件已在外部修改").wait_for(timeout=15_000)
+                page.on("dialog", lambda dialog: dialog.accept())
+                page.get_by_role("button", name="重新载入").click()
+                editor.get_by_text("Outside again", exact=True).wait_for(timeout=10_000)
+                assert page_errors == [], f"page errors: {page_errors}"
+                browser.close()
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)

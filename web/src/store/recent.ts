@@ -20,12 +20,29 @@ export interface RecentHistory {
 const emptyHistory: RecentHistory = { markdown: [], projects: [] };
 const storeName = 'recent';
 const historyKey = 'history';
+const sessionStoreName = 'session';
+const sessionKey = 'current';
 const limit = 8;
+
+export interface SessionTab {
+  sourceId: string;
+  path: string;
+  label: string;
+}
+
+export interface SessionState {
+  tabs: SessionTab[];
+  activeSourceId?: string;
+}
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('md-slide-studio-workspace', 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(storeName);
+    const request = indexedDB.open('md-slide-studio-workspace', 2);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(storeName)) database.createObjectStore(storeName);
+      if (!database.objectStoreNames.contains(sessionStoreName)) database.createObjectStore(sessionStoreName);
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -97,6 +114,41 @@ export async function requestAccess(handle: FileSystemHandle, mode: 'read' | 're
   };
   // Request permission before any other asynchronous work can consume user activation.
   return !accessible.requestPermission || await accessible.requestPermission({ mode }) === 'granted';
+}
+
+export async function hasAccess(handle: FileSystemHandle | undefined, mode: 'read' | 'readwrite') {
+  if (!handle) return false;
+  const accessible = handle as FileSystemHandle & {
+    queryPermission?(options: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
+  };
+  return !accessible.queryPermission || await accessible.queryPermission({ mode }) === 'granted';
+}
+
+export async function readSession(): Promise<SessionState | undefined> {
+  const database = await openDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = database.transaction(sessionStoreName).objectStore(sessionStoreName).get(sessionKey);
+      request.onsuccess = () => resolve(request.result ?? undefined);
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function writeSession(session: SessionState): Promise<void> {
+  const database = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(sessionStoreName, 'readwrite');
+      transaction.objectStore(sessionStoreName).put(session, sessionKey);
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } finally {
+    database.close();
+  }
 }
 
 export function useRecentHistory() {

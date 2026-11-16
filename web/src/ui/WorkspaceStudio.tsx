@@ -6,8 +6,9 @@ import { buildAst, listThemes, renderMarkdown } from '../render/pyodideEngine';
 import { listServerThemes, parseOnServer, renderOnServer } from '../render/serverEngine';
 import { downloadText } from '../render/download';
 import { embedWorkspaceImages } from '../render/workspaceImages';
-import { identifySource, requestAccess, useRecentHistory } from '../store/recent';
-import type { RecentSource, RecentVisit } from '../store/recent';
+import { hasAccess, identifySource, readSession, requestAccess, useRecentHistory, writeSession } from '../store/recent';
+import type { RecentSource, RecentVisit, SessionState } from '../store/recent';
+import { useFileWatcher } from '../store/fileWatcher';
 import { StaticDeckStore } from '../store/staticStore';
 import type { WorkbenchView } from '../store/workbenchView';
 import { markdownFile, workspaceFromDirectory, workspaceFromFiles } from '../store/workspace';
@@ -65,6 +66,7 @@ interface DraftDocument {
   theme: string;
   store: StaticDeckStore;
   view: { current: WorkbenchView | undefined };
+  handle?: FileSystemFileHandle;
 }
 
 interface StudioTab {
@@ -90,12 +92,13 @@ type MarkdownPicker = (options: {
 const pickerFallback = (error: unknown) =>
   error instanceof DOMException && ['SecurityError', 'NotAllowedError'].includes(error.name);
 
-function draft(id: number, path: string, text: string, parse: typeof buildAst): DraftDocument {
+function draft(id: number, path: string, text: string, parse: typeof buildAst,
+  handle?: FileSystemFileHandle): DraftDocument {
   const content = text.replace(/\r\n?/g, '\n');
   return {
     id, path, content, savedContent: content, theme: '',
     store: new StaticDeckStore(path, content, parse),
-    view: { current: undefined },
+    view: { current: undefined }, handle,
   };
 }
 
@@ -118,6 +121,8 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   const [activeId, setActiveId] = useState(0);
   const [fileBusy, setFileBusy] = useState(false);
   const [fileError, setFileError] = useState('');
+  const [externalChange, setExternalChange] = useState(false);
+  const [pendingSession, setPendingSession] = useState<SessionState>();
   const [rendered, setRendered] = useState<(Awaited<ReturnType<typeof embedWorkspaceImages>> & {
     documentId: number;
     content: string;
@@ -134,8 +139,15 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   const focusTab = useRef(false);
   const session = useRef<EditorSession>();
   const nextId = useRef(1);
+  const sessionReady = useRef(false);
+  const tabsRef = useRef(tabs);
+  const openedRef = useRef<DraftDocument | undefined>();
+  const getHistoryRef = useRef(getHistory);
   const tab = tabs.find((item) => item.id === activeId);
   const opened = tab?.documents.find((document) => document.path === tab.path);
+  tabsRef.current = tabs;
+  openedRef.current = opened;
+  getHistoryRef.current = getHistory;
   const { id: documentId, path = '', content = '', theme = '' } = opened ?? {};
   const workspace = tab?.workspace;
   const dirty = Boolean(opened && isDirty(opened));
@@ -158,6 +170,51 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   useEffect(() => {
     void (bound ? listServerThemes() : listThemes()).then(setThemes).catch(() => setThemes([]));
   }, [bound]);
+
+  useFileWatcher(opened?.handle, () => {
+    const doc = openedRef.current;
+    if (!doc?.handle || fileAction.current) return;
+    void doc.handle.getFile().then(async (file) => {
+      const disk = (await file.text()).replace(/\r\n?/g, '\n');
+      if (disk === doc.content) return;
+      const target = tabsRef.current.find((item) => item.documents.some((entry) => entry.id === doc.id));
+      if (!target) return;
+      if (isDirty(doc)) setExternalChange(true);
+      else reloadDocument(target, doc, disk);
+    }).catch(() => undefined);
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      let saved: SessionState | undefined;
+      try { saved = await readSession(); } catch { /* IndexedDB unavailable: skip restore */ }
+      if (cancelled || !saved?.tabs.length) { sessionReady.current = true; return; }
+      const { markdown, projects } = await getHistoryRef.current();
+      if (cancelled) return;
+      const visits = [...markdown, ...projects];
+      const needed = saved.tabs
+        .map((entry) => visits.find((visit) => visit.source.id === entry.sourceId))
+        .filter((visit): visit is RecentVisit => Boolean(visit));
+      if (!needed.length) { sessionReady.current = true; return; }
+      const allowed = await Promise.all(needed.map((visit) =>
+        hasAccess(visit.source.handle, visit.source.kind === 'project' ? 'readwrite' : 'read')));
+      if (cancelled) return;
+      if (allowed.every(Boolean)) await restoreSession(saved);
+      else setPendingSession(saved);
+      sessionReady.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionReady.current) return;
+    const entries = tabs.filter((item) => item.source).map((item) => ({
+      sourceId: item.source!.id, path: item.path, label: item.label,
+    }));
+    const activeSourceId = tabs.find((item) => item.id === activeId)?.source?.id;
+    void writeSession({ tabs: entries, activeSourceId }).catch(() => undefined);
+  }, [tabs, activeId]);
 
   const { shortcuts } = useShortcuts();
   useShortcut('openMarkdown', true, chooseMarkdown);
@@ -208,6 +265,29 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
     if (!opened && session.current && !await session.current.flush()) {
       throw new Error('启动稿件保存失败，请保存后再切换。');
     }
+  }
+
+  function reloadDocument(target: StudioTab, doc: DraftDocument, text: string) {
+    const next = draft(nextId.current++, doc.path, text, parse, doc.handle);
+    next.theme = doc.theme;
+    setTabs((current) => current.map((item) => item.id === target.id ? {
+      ...item,
+      documents: item.documents.map((entry) => entry.id === doc.id ? next : entry),
+    } : item));
+    setExternalChange(false);
+    setFileError('');
+  }
+
+  function reloadFromDisk() {
+    const doc = openedRef.current;
+    if (!doc?.handle) return;
+    const target = tabsRef.current.find((item) => item.documents.some((entry) => entry.id === doc.id));
+    if (!target) return;
+    if (isDirty(doc) && !window.confirm('重新载入会丢弃当前未保存的修改，继续吗？')) return;
+    void handleFileAction(async () => {
+      const file = await doc.handle!.getFile();
+      reloadDocument(target, doc, (await file.text()).replace(/\r\n?/g, '\n'));
+    });
   }
 
   function selectTab(id: number, restoreFocus = false) {
@@ -298,7 +378,7 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
       const existing = tabs.find((item) => item.source?.id === source.id);
       if (existing) return existing;
       const id = nextId.current++;
-      const document = draft(id, file.name, await file.text(), parse);
+      const document = draft(id, file.name, await file.text(), parse, handle);
       return { id, label: file.name, path: file.name, source, documents: [document] };
     }));
     await addTabs(next);
@@ -315,7 +395,7 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   async function readDocument(folder: Workspace, path: string) {
     const file = await folder.read(path);
     if (!file) throw new Error('找不到选中的 Markdown 文件');
-    return draft(nextId.current++, path, await file.text(), parse);
+    return draft(nextId.current++, path, await file.text(), parse, folder.handleFor?.(path));
   }
 
   async function openWorkspace(folder: Workspace, handle?: WorkspaceDirectoryHandle, reopen?: Reopen) {
@@ -391,11 +471,15 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
 
   function openRecent(visit: RecentVisit, project: boolean) {
     if (fileAction.current) return;
+    void handleFileAction(() => openVisit(visit, project));
+  }
+
+  async function openVisit(visit: RecentVisit, project: boolean) {
     const { source } = visit;
     const existing = tabs.find((item) => item.source?.id === source.id);
     if (existing) {
       if (source.kind === 'project' && !project) {
-        void handleFileAction(() => showProjectDocument(existing, visit.path));
+        await showProjectDocument(existing, visit.path);
       } else {
         selectTab(existing.id, true);
       }
@@ -410,24 +494,39 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
       return;
     }
 
-    void handleFileAction(async () => {
-      try {
-        const mode = source.kind === 'project' ? 'readwrite' : 'read';
-        if (!await requestAccess(handle, mode)) {
-          throw new DOMException('File access denied', 'NotAllowedError');
-        }
-        if (source.kind === 'project' && source.handle) {
-          await openWorkspace(await workspaceFromDirectory(source.handle), source.handle, reopen);
-        } else if (source.kind === 'markdown' && source.handle) {
-          await openMarkdownEntries([{ file: await source.handle.getFile(), handle: source.handle }], reopen);
-        }
-      } catch (error) {
-        if (pickerFallback(error) || (error instanceof DOMException && error.name === 'NotFoundError')) {
-          throw new Error(`无法读取「${source.name}」，请用「文件」菜单重新选择。`);
-        }
-        throw error;
+    try {
+      const mode = source.kind === 'project' ? 'readwrite' : 'read';
+      if (!await requestAccess(handle, mode)) {
+        throw new DOMException('File access denied', 'NotAllowedError');
       }
-    });
+      if (source.kind === 'project' && source.handle) {
+        await openWorkspace(await workspaceFromDirectory(source.handle), source.handle, reopen);
+      } else if (source.kind === 'markdown' && source.handle) {
+        await openMarkdownEntries([{ file: await source.handle.getFile(), handle: source.handle }], reopen);
+      }
+    } catch (error) {
+      if (pickerFallback(error) || (error instanceof DOMException && error.name === 'NotFoundError')) {
+        throw new Error(`无法读取「${source.name}」，请用「文件」菜单重新选择。`);
+      }
+      throw error;
+    }
+  }
+
+  async function restoreSession(saved: SessionState) {
+    const { markdown, projects } = await getHistory();
+    const visits = [...markdown, ...projects];
+    let count = 0;
+    for (const entry of saved.tabs) {
+      const base = visits.find((item) => item.source.id === entry.sourceId);
+      if (!base) continue;
+      try {
+        await openVisit({ ...base, path: entry.path }, base.source.kind === 'project');
+        count++;
+      } catch {
+        // Skip sources whose handles are no longer usable.
+      }
+    }
+    if (count) setTabs((current) => current.filter((item) => item.source || item.id !== 0));
   }
 
   function updateDocument(changes: Partial<Pick<DraftDocument, 'content' | 'savedContent' | 'theme'>>) {
@@ -505,25 +604,53 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
       missingAssets={currentRender && preview.missing.length ? preview.missing : undefined}
       activeTabId={`workspace-tab-${activeId}`}
       tabBar={
-        <div className="workspace-bar">
-          <WorkspaceTabs tabs={tabs.map((item) => ({
-            id: item.id, label: item.label, hint: item.hint, folder: Boolean(item.workspace),
-            dirty: item.documents.some(isDirty), closable: !bound || item.id !== 0,
-          }))} activeId={activeId} busy={fileBusy} focusTab={focusTab} onSelect={selectTab} onClose={closeTab} />
-          {workspace && (
-            <div className="workspace-files">
-              <select aria-label="工作文件夹中的 Markdown" title={`${workspace.name}/${path}`}
-                className="button workspace-select" value={path} disabled={fileBusy}
-                onChange={(event) => selectDocument(event.currentTarget.value)}>
-                {workspace.documents.map((doc) => (
-                  <option key={doc} value={doc}>
-                    {doc}{tab.documents.some((item) => item.path === doc && isDirty(item)) ? ' ●' : ''}
-                  </option>
-                ))}
-              </select>
+        <>
+          {(externalChange || pendingSession) && (
+            <div className="workspace-notices">
+              {pendingSession && (
+                <div className="workspace-notice" role="status">
+                  <span>上次打开了 {pendingSession.tabs.length} 个文件</span>
+                  <button type="button" className="button" onClick={() => {
+                    const saved = pendingSession;
+                    setPendingSession(undefined);
+                    void handleFileAction(() => restoreSession(saved))
+                      .finally(() => { sessionReady.current = true; });
+                  }}>恢复会话</button>
+                  <button type="button" className="button" onClick={() => {
+                    setPendingSession(undefined);
+                    void writeSession({ tabs: [] }).catch(() => undefined);
+                  }}>忽略</button>
+                </div>
+              )}
+              {externalChange && (
+                <div className="workspace-notice" role="status">
+                  <span>本地文件已在外部修改</span>
+                  <button type="button" className="button" onClick={reloadFromDisk}>重新载入</button>
+                  <button type="button" className="button" onClick={() => setExternalChange(false)}>忽略</button>
+                </div>
+              )}
             </div>
           )}
-        </div>
+          <div className="workspace-bar">
+            <WorkspaceTabs tabs={tabs.map((item) => ({
+              id: item.id, label: item.label, hint: item.hint, folder: Boolean(item.workspace),
+              dirty: item.documents.some(isDirty), closable: !bound || item.id !== 0,
+            }))} activeId={activeId} busy={fileBusy} focusTab={focusTab} onSelect={selectTab} onClose={closeTab} />
+            {workspace && (
+              <div className="workspace-files">
+                <select aria-label="工作文件夹中的 Markdown" title={`${workspace.name}/${path}`}
+                  className="button workspace-select" value={path} disabled={fileBusy}
+                  onChange={(event) => selectDocument(event.currentTarget.value)}>
+                  {workspace.documents.map((doc) => (
+                    <option key={doc} value={doc}>
+                      {doc}{tab.documents.some((item) => item.path === doc && isDirty(item)) ? ' ●' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </>
       }
       fileActions={fileActions}
       headerActions={opened && (

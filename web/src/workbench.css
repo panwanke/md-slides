@@ -126,6 +126,26 @@ svg { flex: none; vertical-align: middle; }
 .recent-menu-name { flex: 1 1 auto; }
 .recent-menu-detail { flex: 0 1 auto; max-width: 42%; color: var(--muted); font-size: 11px; }
 
+.workspace-notices {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-bottom: 1px solid var(--line);
+  background: var(--accent-pale);
+}
+.workspace-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 3px 12px;
+  font-size: 12px;
+  color: var(--accent-ink);
+}
+.workspace-notice span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-notice .button { min-height: 24px; padding: 0 9px; font-size: 12px; }
+
 .workspace-bar {
   display: flex;
   align-items: stretch;

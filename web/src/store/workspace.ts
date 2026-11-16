@@ -16,6 +16,8 @@ export interface Workspace {
   name: string;
   documents: string[];
   read(path: string): Promise<File | undefined>;
+  /** Only available for directory handles; enables file watching and session restore. */
+  handleFor?: (path: string) => FileSystemFileHandle | undefined;
   save?: (path: string, content: string) => Promise<void>;
 }
 
@@ -46,6 +48,9 @@ export async function workspaceFromDirectory(root: WorkspaceDirectoryHandle): Pr
   return {
     name: root.name,
     documents: [...documents.keys()].sort(),
+    handleFor(path) {
+      return documents.get(path);
+    },
     async read(path) {
       const document = documents.get(path);
       if (document) return document.getFile();
