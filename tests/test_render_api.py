@@ -58,3 +58,17 @@ def test_api_render_returns_422_on_markdown_syntax_error():
 def test_doctor_advertises_stateless_render():
     client = TestClient(app)
     assert client.get("/api/doctor").json()["statelessRender"] is True
+
+
+def test_workbench_icon_endpoints_return_200():
+    client = TestClient(app)
+    svg_res = client.get("/icon.svg")
+    assert svg_res.status_code == 200
+    assert "image/svg+xml" in svg_res.headers.get("content-type", "")
+
+    png_res = client.get("/icon-32.png")
+    assert png_res.status_code == 200
+    assert "image/png" in png_res.headers.get("content-type", "")
+
+    ico_res = client.get("/favicon.ico")
+    assert ico_res.status_code == 200

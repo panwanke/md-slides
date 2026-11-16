@@ -52,6 +52,7 @@ class RenderPayload(BaseModel):
 
     content: str
     theme: Optional[str] = None
+    standalone: bool = False
 
 
 class PatchPayload(BaseModel):
@@ -72,10 +73,16 @@ async def render_document(payload: RenderPayload):
     another machine, a future cloud store) can go through the identical engine.
     """
     try:
-        html_text, info = render_text(payload.content, theme=payload.theme)
+        html_text, info = render_text(payload.content, theme=payload.theme, standalone=payload.standalone)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error))
     return {"ok": True, "html": html_text, **info}
+
+
+@app.post("/api/ast")
+def parse_document(payload: ContentPayload):
+    """Build the editor AST without opening or saving a server-side document."""
+    return {"ast": build_document_ast(payload.content)}
 
 
 @app.post("/api/patch")
@@ -122,6 +129,33 @@ async def get_workbench():
     if not index.is_file():
         return HTMLResponse("<p>Build the workbench with npm run build in web/.</p>", status_code=503)
     return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/icon.svg")
+async def get_workbench_icon_svg():
+    target = WORKBENCH_DIST / "icon.svg"
+    if target.is_file():
+        return FileResponse(target, media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="icon.svg not found")
+
+
+@app.get("/icon-32.png")
+async def get_workbench_icon_png():
+    target = WORKBENCH_DIST / "icon-32.png"
+    if target.is_file():
+        return FileResponse(target, media_type="image/png")
+    raise HTTPException(status_code=404, detail="icon-32.png not found")
+
+
+@app.get("/favicon.ico")
+async def get_workbench_favicon():
+    target_png = WORKBENCH_DIST / "icon-32.png"
+    if target_png.is_file():
+        return FileResponse(target_png, media_type="image/png")
+    target_svg = WORKBENCH_DIST / "icon.svg"
+    if target_svg.is_file():
+        return FileResponse(target_svg, media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="favicon not found")
 
 
 def _render_live_preview(*, embedded: bool = False):

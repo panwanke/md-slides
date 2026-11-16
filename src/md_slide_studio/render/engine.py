@@ -105,7 +105,7 @@ HEAD_TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 {favicon_tag}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+{katex_styles}
 <style>
 {fonts_css}
 {base_css}
@@ -119,9 +119,12 @@ HEAD_TEMPLATE = """<!DOCTYPE html>
 <div class="deck">
 """
 
-KATEX_SCRIPT = """
+KATEX_CDN_STYLES = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">'
+KATEX_CDN_SCRIPTS = """
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+"""
+KATEX_SCRIPT = """
 <script>
 (function() {
   function tryRender() {
@@ -614,13 +617,14 @@ def render_text(
     theme: Optional[str] = None,
     extra_scripts: str = "",
     stem: str = "deck",
+    standalone: bool = False,
 ) -> Tuple[str, Dict[str, Any]]:
     """Render Markdown *content* into a complete HTML presentation.
 
     Stateless counterpart of :func:`render_deck`: it never touches the filesystem,
     so the very same pipeline can serve a local file, a database row or a request
-    body. Only ``out_dir``/``bundle`` need a document-relative ``base_dir`` and
-    therefore stay in ``render_deck``.
+    body. With ``standalone`` the player dependencies are inlined. Document
+    images still need a document-relative resolver.
 
     Returns ``(html, info)`` where ``info`` carries ``slideCount``, ``title`` and
     ``theme`` for callers that need metadata without re-parsing the Markdown.
@@ -652,6 +656,15 @@ def render_text(
     fonts_css = default_provider.get_fonts_css()
     anim_css, fx_js = default_provider.get_animation_assets()
     nav_css, nav_js = default_provider.get_navigation_assets()
+    if standalone:
+        math_css, math_js = default_provider.get_bundled_math()
+        katex_styles = f"<style>{math_css}</style>"
+        katex_scripts = "<script>" + math_js.replace("</script", "<\\/script") + "</script>"
+        fx_js = default_provider.get_bundled_effects() + "\n" + fx_js
+        fonts_css = OFFLINE_FONTS
+    else:
+        katex_styles = KATEX_CDN_STYLES
+        katex_scripts = KATEX_CDN_SCRIPTS
     runtime_js = default_provider.get_runtime_js().replace("</script", "<\\/script")
     fx_js = fx_js.replace("</script", "<\\/script")
     nav_js = nav_js.replace("</script", "<\\/script")
@@ -660,6 +673,7 @@ def render_text(
         lang=deck_sub.get("lang") or meta.get("lang") or "zh",
         title=title,
         favicon_tag=default_provider.get_favicon_tag(),
+        katex_styles=katex_styles,
         fonts_css=fonts_css or OFFLINE_FONTS,
         base_css=base_css,
         anim_css=anim_css,
@@ -671,7 +685,7 @@ def render_text(
         runtime_js=runtime_js,
         fx_js=fx_js,
         nav_js=nav_js,
-        katex_script=KATEX_SCRIPT,
+        katex_script=katex_scripts + KATEX_SCRIPT,
         extra_scripts=extra_scripts,
     )
 
@@ -701,7 +715,12 @@ def render_deck(
         out_file = out_path / target_name
 
         if bundle:
-            bundled_html, _ = package_document(full_html, base_dir=path.parent, asset_dir=default_provider.assets_dir)
+            standalone_html, _ = render_text(
+                text, theme=theme, extra_scripts=extra_scripts, stem=path.stem, standalone=True,
+            )
+            bundled_html, _ = package_document(
+                standalone_html, base_dir=path.parent, asset_dir=default_provider.assets_dir,
+            )
             atomic_write(out_file, bundled_html)
         else:
             atomic_write(out_file, full_html)

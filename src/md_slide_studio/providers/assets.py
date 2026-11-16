@@ -56,6 +56,23 @@ class AssetProvider:
         js_text = fx_js.read_text(encoding="utf-8") if fx_js.is_file() else ""
         return css_text, js_text
 
+    def get_bundled_effects(self) -> str:
+        modules = sorted((self.assets_dir / "animations" / "fx").glob("*.js"))
+        return "\n".join([
+            "window.__hpxBundled = true;",
+            *(module.read_text(encoding="utf-8") for module in modules),
+        ])
+
+    def get_bundled_math(self) -> tuple[str, str]:
+        katex = self.assets_dir / "katex"
+        css = (katex / "katex.inline.css").read_text(encoding="utf-8")
+        js = "\n".join(
+            (katex / filename).read_text(encoding="utf-8")
+            for filename in ("katex.min.js", "auto-render.min.js")
+        )
+        license_text = (katex / "LICENSE").read_text(encoding="utf-8")
+        return css, f"/*!\n{license_text}\n*/\n{js}"
+
     def get_navigation_assets(self) -> tuple[str, str]:
         nav_css = self.assets_dir / "chapter-navigation.css"
         nav_js = self.assets_dir / "chapter-navigation.js"
