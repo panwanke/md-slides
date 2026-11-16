@@ -23,8 +23,9 @@ md_slide:
 1. 书写层与表现层的权衡
 2. 结构解耦：Markdown AST 与 DOM
 3. 数学表达：从 LaTeX 源码到矢量渲染
-4. 动态交互：分步动画与状态机
-5. 独立成片：自包含单文件 HTML 分发
+4. 结构图表：Pele 与 Mermaid 矢量呈现
+5. 动态交互：分步动画与状态机
+6. 独立成片：自包含单文件 HTML 分发
 
 ---
 <!-- slide: layout=two-col | transition=slide -->
@@ -67,6 +68,31 @@ $$f(x \mid \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(x -
 
 ::: notes
 公式支持行内与块级两种模式，无需转为光栅图片，保持高清晰度与复制性。
+:::
+
+---
+<!-- slide: layout=two-col | transition=slide | section=结构图表 -->
+# 结构图表呈现：Pele 与 Mermaid
+
+内置 Obsidian 官方 Pele 渲染器，直接支持 `mermaid`、`pele`、`diagram` 代码块：
+
+- **完全离线矢量**：在浏览器与导出 HTML 中直接编译为 SVG，无外网依赖
+- **双向交互定位**：预览页点击图表，编辑区光标即可精准回跳至对应代码块
+- **丰富图型覆盖**：流程图、时序图、状态图、思维导图、类图与甘特图
+
++++
+
+```mermaid
+flowchart TD
+    MD["Markdown 源码"] --> AST["结构化 AST"]
+    AST --> Pele["Pele 图表引擎"]
+    AST --> KaTeX["KaTeX 数学排版"]
+    Pele --> HTML["自包含交互式 HTML"]
+    KaTeX --> HTML
+```
+
+::: notes
+支持标准 Mermaid 语法，纯前端毫秒级渲染为 SVG 矢量图，点击图表即可在编辑区联动定位。
 :::
 
 ---

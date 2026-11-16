@@ -24,6 +24,11 @@ wheels/
 htmlcov/
 .tox/
 
+# Databases & Local Server Storage
+*.db
+*.sqlite
+*.sqlite3
+
 # Virtual Environments
 .venv/
 venv/
