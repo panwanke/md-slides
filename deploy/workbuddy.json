@@ -1,0 +1,15 @@
+{
+  "name": "md-slide-studio",
+  "display_name": "MD Slide Studio",
+  "version": "0.1.0",
+  "description": "专为学术汇报与技术演讲设计的 Markdown 幻灯片工作台与渲染服务",
+  "entrypoint": "md-slide-studio serve --host 0.0.0.0 --port 9000 --no-browser",
+  "port": 9000,
+  "healthcheck": "/api/doctor",
+  "persistent_paths": [
+    "/data"
+  ],
+  "env": {
+    "MD_STUDIO_DATA_DIR": "/data"
+  }
+}

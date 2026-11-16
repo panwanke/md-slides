@@ -1,0 +1,19 @@
+services:
+  md-slide-studio:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: md-slide-studio:latest
+    container_name: md-slide-studio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      - MD_STUDIO_DATA_DIR=/data
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - md_slide_studio_data:/data
+
+volumes:
+  md_slide_studio_data:
+    driver: local

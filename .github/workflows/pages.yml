@@ -32,8 +32,8 @@ jobs:
       - name: Build Presentation Showcase
         run: |
           mkdir -p _site
-          python -m jc_slide_studio.cli render demo/showcase.md --bundle --out _site
-          mv _site/showcase_rendered.html _site/index.html
+          python -m md_slide_studio.cli render demo/showcase.md --bundle --out _site
+          mv _site/showcase_rendered.html _site/showcase.html
           cp docs/images/icon.svg _site/icon.svg
           cp docs/images/icon-32.png _site/icon-32.png
           cp docs/images/icon-512.png _site/icon-512.png
@@ -51,23 +51,24 @@ jobs:
           cd web
           npm ci
           npm run build:static
+          cp -r dist-static/. ../_site/
+          cp ../_site/studio.html ../_site/index.html
           mkdir -p ../_site/studio
-          cp -r dist-static/. ../_site/studio/
-          mv ../_site/studio/studio.html ../_site/studio/index.html
+          cp ../_site/studio.html ../_site/studio/index.html
 
       - name: Add studio link to showcase
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          page = Path('_site/index.html')
+          page = Path('_site/showcase.html')
           html = page.read_text(encoding='utf-8')
           badge = (
-              '<a href="./studio/" id="jc-studio-entry" '
+              '<a href="./" id="md-studio-entry" '
               'style="position:fixed;right:24px;bottom:24px;z-index:9999;'
               'padding:10px 16px;border-radius:999px;background:#1c1f26;color:#eef0f5;'
               'font:14px system-ui;text-decoration:none;box-shadow:0 4px 16px rgba(0,0,0,.25)">'
-              '在线编辑 →</a>'
+              '在线工作台 →</a>'
           )
           page.write_text(html.replace('</body>', badge + '\n</body>'), encoding='utf-8')
           PY
