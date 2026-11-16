@@ -1,7 +1,7 @@
 # Self-hosted deck library (mode B).
 # Build from the repository root:
-#   docker build -f docs/ops/Dockerfile -t jc-slide-studio .
-# Keep /data on a persistent volume: it holds studio.db (accounts + decks + revisions).
+#   docker build -t jc-slide-studio deploy/cloudrun
+# Persist /data for SQLite or /data/assets when using CloudBase PostgreSQL.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \

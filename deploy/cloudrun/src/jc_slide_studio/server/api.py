@@ -13,12 +13,15 @@ import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
+from starlette.datastructures import UploadFile
 
 from jc_slide_studio.document.parser import build_document_ast
 from jc_slide_studio.render.engine import render_text
 from jc_slide_studio.server.preview_scripts import CLICK_MAP_SCRIPT, EMBEDDED_STYLE
+from jc_slide_studio.studio import assets
 # Local runs keep SQLite; CloudRun switches to the CloudBase PG HTTP backend.
 if os.environ.get("JC_STUDIO_BACKEND") == "cloudbase_pg":
     from jc_slide_studio.studio import service_pg as service
@@ -40,6 +43,7 @@ class Credentials(BaseModel):
 class DeckCreate(BaseModel):
     title: str = "未命名演示稿"
     content: Optional[str] = None
+    template: Optional[str] = None
 
 
 class DeckSave(BaseModel):
@@ -113,6 +117,23 @@ def me(user: Dict[str, Any] = Depends(current_user)):
 # Deck library
 # ---------------------------------------------------------------------------
 
+@router.get("/templates")
+def list_templates():
+    from jc_slide_studio.studio.starter_deck import TEMPLATES
+    return {
+        "ok": True,
+        "templates": [
+            {
+                "id": key,
+                "title": val["title"],
+                "description": val["description"],
+                "content": val["content"],
+            }
+            for key, val in TEMPLATES.items()
+        ],
+    }
+
+
 @router.get("/decks")
 def list_decks(user: Dict[str, Any] = Depends(current_user)):
     return {"ok": True, "decks": service.list_decks(user["id"])}
@@ -120,8 +141,22 @@ def list_decks(user: Dict[str, Any] = Depends(current_user)):
 
 @router.post("/decks", status_code=201)
 def create_deck(payload: DeckCreate, user: Dict[str, Any] = Depends(current_user)):
-    content = payload.content if payload.content is not None else service.STARTER_CONTENT
-    return {"ok": True, "deck": service.create_deck(user["id"], payload.title, content)}
+    from jc_slide_studio.studio.starter_deck import TEMPLATES
+    content = payload.content
+    title = payload.title
+    if content is None:
+        if payload.template and payload.template in TEMPLATES:
+            tpl = TEMPLATES[payload.template]
+            content = tpl["content"]
+            if title == "未命名演示稿":
+                title = tpl["title"]
+            else:
+                content = content.replace('title: "未命名演示稿"', f'title: "{title}"')
+                content = content.replace('title: "学术研究与课题汇报"', f'title: "{title}"')
+                content = content.replace('title: "新一代智能协作产品"', f'title: "{title}"')
+        else:
+            content = service.STARTER_CONTENT
+    return {"ok": True, "deck": service.create_deck(user["id"], title, content)}
 
 
 @router.post("/decks/import", status_code=201)
@@ -156,7 +191,68 @@ def preview_deck(deck_id: int, embedded: int = 1, user: Dict[str, Any] = Depends
             f'<h2>预览暂时无法渲染</h2><code>{escape(str(error))}</code>',
             status_code=422,
         )
+    # Inject <base> tag so relative image paths like images/fig.png hit deck assets
+    base_tag = f'<base href="{assets.asset_base_url(deck_id)}">'
+    if "<head>" in html_text and "<base" not in html_text:
+        html_text = html_text.replace("<head>", f"<head>\n    {base_tag}", 1)
     return HTMLResponse(content=html_text)
+
+
+@router.get("/decks/{deck_id}/assets")
+def list_assets(deck_id: int, user: Dict[str, Any] = Depends(current_user)):
+    if not service.get_deck(user["id"], deck_id):
+        raise HTTPException(status_code=404, detail="演示稿不存在")
+    return {"ok": True, "assets": assets.list_deck_assets(deck_id)}
+
+
+@router.get("/decks/{deck_id}/assets/{asset_path:path}")
+def get_asset(deck_id: int, asset_path: str, user: Dict[str, Any] = Depends(current_user)):
+    if not service.get_deck(user["id"], deck_id):
+        raise HTTPException(status_code=404, detail="演示稿不存在")
+    file_path = assets.get_deck_asset_path(deck_id, asset_path)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="资源不存在")
+    return FileResponse(file_path, headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox",
+    })
+
+
+@router.post("/decks/{deck_id}/assets")
+async def upload_assets(
+    deck_id: int,
+    request: Request,
+    user: Dict[str, Any] = Depends(current_user),
+):
+    if not service.get_deck(user["id"], deck_id):
+        raise HTTPException(status_code=404, detail="演示稿不存在")
+    async with request.form() as form:
+        files = [
+            (value.filename or "", value.file)
+            for _, value in form.multi_items()
+            if isinstance(value, UploadFile)
+        ]
+        document_path = form.get("documentPath")
+        if not files and not isinstance(document_path, str):
+            raise HTTPException(status_code=400, detail="请选择要上传的图片或附件")
+        try:
+            saved = await run_in_threadpool(
+                assets.save_deck_assets, deck_id, files,
+                document_path if isinstance(document_path, str) else None,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+    return {"ok": True, "saved": saved, "count": len(saved)}
+
+
+@router.delete("/decks/{deck_id}/assets/{asset_path:path}")
+def delete_asset(deck_id: int, asset_path: str, user: Dict[str, Any] = Depends(current_user)):
+    if not service.get_deck(user["id"], deck_id):
+        raise HTTPException(status_code=404, detail="演示稿不存在")
+    if not assets.delete_deck_asset(deck_id, asset_path):
+        raise HTTPException(status_code=404, detail="资源不存在")
+    return {"ok": True}
 
 
 @router.get("/decks/{deck_id}")
@@ -171,6 +267,7 @@ def get_deck(deck_id: int, user: Dict[str, Any] = Depends(current_user)):
         "fullPath": f"deck://{deck_id}",
         "content": content,
         "revision": deck["revision"],
+        "assetBase": assets.asset_base_url(deck_id),
         "ast": build_document_ast(content, revision=deck["revision"]),
         "deck": deck,
     }

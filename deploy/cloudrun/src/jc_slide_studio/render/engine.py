@@ -9,6 +9,7 @@ import textwrap
 from typing import Any, Dict, List, Optional, Tuple
 
 from jc_slide_studio.document.parser import (
+    IMAGE_MARKDOWN,
     parse_front_matter,
     strip_workspace,
     split_slides_with_ranges,
@@ -166,8 +167,12 @@ TAIL_TEMPLATE = """
 """
 
 
+INLINE_LITERAL = re.compile(r"`([^`]+)`|" + IMAGE_MARKDOWN.pattern)
+
+
 def inline(s: str) -> str:
     math_tokens: List[str] = []
+    literal_tokens: List[str] = []
 
     def save_math(match: re.Match) -> str:
         math_tokens.append(match.group(0))
@@ -176,13 +181,19 @@ def inline(s: str) -> str:
     # Protect $$...$$ and $...$ from markdown alterations
     s = re.sub(r"(\$\$[\s\S]+?\$\$|(?<!\\)\$(?!\s)[^$\n]+?(?<!\s)(?<!\\)\$)", save_math, s)
 
-    s = html.escape(s, quote=False)
-    s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
-    s = re.sub(
-        r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"([^\"]*)\")?\)",
-        r'<img src="\2" alt="\1" title="\3" class="jc-inline">',
-        s,
-    )
+    def save_literal(match: re.Match) -> str:
+        code, alt, angle_src, bare_src, title = match.groups()
+        if code is not None:
+            literal_tokens.append(f"<code>{html.escape(code, quote=False)}</code>")
+        else:
+            literal_tokens.append('<img src="%s" alt="%s" title="%s" class="jc-inline">' % (
+                html.escape(angle_src or bare_src, quote=True),
+                html.escape(alt, quote=True),
+                html.escape(title or "", quote=True),
+            ))
+        return f"\x00LITERAL_{len(literal_tokens)-1}\x00"
+
+    s = html.escape(INLINE_LITERAL.sub(save_literal, s), quote=False)
     s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
     s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", s)
 
@@ -192,6 +203,9 @@ def inline(s: str) -> str:
         return '<a href="%s"%s>%s</a>' % (html.escape(html.unescape(destination), quote=True), attributes, label)
 
     s = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", render_link, s)
+
+    for idx, token in enumerate(literal_tokens):
+        s = s.replace(f"\x00LITERAL_{idx}\x00", token)
 
     for idx, token in enumerate(math_tokens):
         escaped_token = html.escape(token, quote=False)
@@ -277,9 +291,10 @@ def parse_blocks(text: str) -> List[Dict[str, Any]]:
             i += 1
             continue
 
-        m = re.match(r"^!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"([^\"]*)\")?\)\s*$", s)
+        m = IMAGE_MARKDOWN.fullmatch(s)
         if m:
-            blocks.append({"type": "image", "alt": m.group(1), "src": m.group(2), "cap": m.group(3) or ""})
+            alt, angle_src, bare_src, caption = m.groups()
+            blocks.append({"type": "image", "alt": alt, "src": angle_src or bare_src, "cap": caption or ""})
             i += 1
             continue
 

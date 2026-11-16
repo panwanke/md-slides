@@ -26,7 +26,7 @@ Key views and workflows include:
 |---------|-------------|
 | `jc-slide-studio doctor` | Check environment, dependencies, and font assets health status |
 | `jc-slide-studio check <deck.md>` | Validate Markdown syntax, slide delimiters, frontmatter, and assets |
-| `jc-slide-studio render <deck.md>` | Compile Markdown into a standalone offline HTML presentation |
+| `jc-slide-studio render <deck.md> --out <DIR>` | Compile Markdown into a standalone offline HTML presentation |
 | `jc-slide-studio edit <deck.md>` | Launch the interactive local studio workbench |
 | `jc-slide-studio preview <deck.md>` | Launch a lightweight live-reloading presentation preview server |
 | `jc-slide-studio serve` | Start the account-based deck library (server-side storage, no bound file) |
@@ -36,7 +36,15 @@ Key views and workflows include:
 `serve` starts the same workbench with a sign-in screen and a deck library:
 decks are stored in a server-side SQLite database, every save keeps a full
 revision snapshot, and each account only sees its own decks. Local `.md` files
-can be imported in bulk. `edit <deck.md>` remains the offline single-file mode.
+can be imported in bulk. Folder imports include images and preserve the
+Markdown directory structure. The deck editor's **Images** (图片) panel can
+upload additional files and insert Markdown references.
+
+CloudBase PostgreSQL can store deck text and revisions. Uploaded media and
+its directory metadata live under `$JC_STUDIO_DATA_DIR/assets`
+(`/data/assets` in this image). Mount shared writable storage at that path
+to keep uploads across instance replacement and serve them from every replica.
+See [CloudBase CFS mounts](https://docs.cloudbase.net/run/deploy/configuring/storage/cfs).
 
 ```bash
 jc-slide-studio serve --port 9000

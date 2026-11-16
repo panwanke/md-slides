@@ -9,6 +9,9 @@ SLIDES_START_RE = re.compile(
     r"^[ \t]*<!--[ \t]*(?:slides:start|slides|@slides)[ \t]*-->[ \t]*$", re.M
 )
 META_RE = re.compile(r"^<!--\s*slide:\s*(.*?)\s*-->", re.I | re.M)
+IMAGE_MARKDOWN = re.compile(
+    r'!\[([^\]]*)\]\((?:<([^<>\n]+)>|((?:[^\s()<>]|\([^\s()]*\))+))(?:\s+"([^"]*)")?\)'
+)
 
 
 def parse_front_matter(text: str) -> Tuple[Dict[str, Any], str, Tuple[int, int]]:
@@ -225,13 +228,14 @@ def extract_slide_nodes(raw_text: str, base_offset: int, slide_id: str) -> List[
         })
 
     # 4. Images
-    for img_idx, img_match in enumerate(re.finditer(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"([^\"]*)\")?\)", raw_text), 1):
+    for img_idx, img_match in enumerate(IMAGE_MARKDOWN.finditer(raw_text), 1):
+        alt, angle_src, bare_src, caption = img_match.groups()
         nodes.append({
             "nodeId": f"{slide_id}-img-{img_idx}",
             "nodeType": "image",
-            "alt": img_match.group(1),
-            "src": img_match.group(2),
-            "caption": img_match.group(3) or "",
+            "alt": alt,
+            "src": angle_src or bare_src,
+            "caption": caption or "",
             "sourceRange": [base_offset + img_match.start(), base_offset + img_match.end()],
         })
 

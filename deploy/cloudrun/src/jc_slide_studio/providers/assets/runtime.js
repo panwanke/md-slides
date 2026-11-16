@@ -241,7 +241,7 @@
 
       // hash
       const hashTarget = '#/'+(n+1);
-      if (location.hash !== hashTarget && !isPresenterWindow) {
+      if (location.protocol !== 'about:' && location.hash !== hashTarget && !isPresenterWindow) {
         history.replaceState(null,'', hashTarget);
       }
 

@@ -52,9 +52,11 @@ def doctor(as_json: bool) -> None:
 @main.command()
 @click.argument("source", type=click.Path(exists=True, path_type=Path))
 @click.option("--json", "as_json", is_flag=True, help="Output check results in JSON.")
-def check(source: Path, as_json: bool) -> None:
-    """Check Markdown slide syntax, structure, placeholders, and links."""
-    result = check_slide_deck(source)
+@click.option("--strict", "strict", is_flag=True,
+              help="Treat missing or out-of-range speaker notes as failures.")
+def check(source: Path, as_json: bool, strict: bool) -> None:
+    """Check Markdown slide syntax, structure, placeholders, and speaker notes."""
+    result = check_slide_deck(source, strict=strict)
     output = {
         "protocolVersion": __protocol_version__,
         **result,
@@ -68,6 +70,8 @@ def check(source: Path, as_json: bool) -> None:
             lvl = diag["level"].upper()
             line_str = f" [line {diag.get('line')}]" if diag.get("line") else ""
             click.echo(f"  {lvl}: {diag['message']}{line_str}")
+    if not result["ok"]:
+        sys.exit(1)
 
 
 @main.command()

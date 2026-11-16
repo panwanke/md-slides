@@ -92,6 +92,10 @@ def create_user(email: str, password: str, display_name: str | None = None) -> D
             row = conn.execute("select * from users where id = ?", (user_id,)).fetchone()
     except sqlite3.IntegrityError as error:
         raise ValueError("该邮箱已注册") from error
+
+    from jc_slide_studio.studio.starter_deck import SHOWCASE_TITLE, SHOWCASE_CONTENT
+    create_deck(user_id, SHOWCASE_TITLE, SHOWCASE_CONTENT)
+
     return _public_user(row)
 
 
