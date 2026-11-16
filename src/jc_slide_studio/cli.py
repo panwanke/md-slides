@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import sys
 import webbrowser
@@ -168,14 +167,11 @@ def serve(port: int, host: str, no_browser: bool) -> None:
     state.source_path = None
     url = f"http://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}/"
     click.echo(f"Deck library on {url}")
-    if os.environ.get("JC_STUDIO_BACKEND") == "cloudbase_pg":
-        click.echo("Database: CloudBase PostgreSQL (HTTPS SQL)")
-    else:
-        from jc_slide_studio.studio.db import db_path
-        click.echo(f"Database: {db_path()}")
+    from jc_slide_studio.studio.db import db_path
+    click.echo(f"Database: {db_path()}")
     if not no_browser:
         webbrowser.open(url)
-    # Behind CloudBase Run's gateway the connection comes from a proxy IP, not
+    # Behind a reverse proxy the connection comes from the proxy IP, not
     # 127.0.0.1. Trust its X-Forwarded-Proto so request.url.scheme is https and
     # the session cookie is emitted with the Secure flag.
     uvicorn.run(

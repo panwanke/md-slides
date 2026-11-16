@@ -14,7 +14,6 @@
 | root | Stable specifications and entrypoints in docs/. |
 | rules | Invariants and terminology in docs/rules/. |
 | plans | Tactical execution plans in docs/plans/. |
-| ops | Repeatable procedures in docs/ops/. |
 
 ### 命名
 
@@ -23,7 +22,6 @@
 | root | TOPIC.md |
 | rules | TOPIC.md |
 | plans | YYYY-MM-DD-*.md |
-| ops | VERB_OBJECT_RUNBOOK.md |
 
 ## 2. 任务 → 按顺序读取
 
@@ -42,4 +40,3 @@
 ## 补充阅读
 - [2026-11-15 初始化与更新 Skill 规划](plans/2026-11-15初始化+更新skill.md)
 - [2026-11-15 账号系统与云端存储设计](<plans/2026-11-15-账号系统与云端存储设计.md>)
-- [自建服务部署 Runbook](<ops/deploy_service_runbook.md>)

@@ -4,6 +4,8 @@ All notable changes to `jc-slide-studio` will be documented in this file.
 
 ## [Unreleased]
 
+- 移除腾讯云托管链路：删除 `deploy/cloudrun/` CloudBase Run 部署副本（含 `cloudbaserc.json`）、`cloudbase/migrations/` 建表迁移、`studio/pg_client.py` 与 `studio/service_pg.py` 两个 PG 后端实现，清理 `JC_STUDIO_BACKEND=cloudbase_pg` 分支与 `docs/ops/` 自建部署物料；服务端存储收敛为 SQLite，线上托管统一由 WorkBuddy 承载。
+
 - 恢复 jc-slides 出片前的逐字稿验收闸门：`check` 新增 `--strict`，把缺讲稿与字数越界（中文 100–400 字符 / 英文 80–320 words）升级为 error；`ok=false` 时返回退出码 1，供技能侧 `--check` 委托阻断出片。`layout=journal|section` 缺讲稿仍不阻断。
 - 修正文档中缺 `--out` 的 `render` 命令示例（`--out` 为必填项），涉及双语 README、示例稿、内置模板及 CloudBase Run 部署副本。
 - 技能侧 `build_deck.py` 委托契约对齐：透传 `--filename` 恢复「源目录名.html」产物命名；工具不可用或协议不匹配时显式报错而非静默回退旧渲染；`--format directory` 明确拒绝并说明当前仅支持单文件独立成片。
