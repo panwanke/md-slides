@@ -26,16 +26,22 @@ jc-slide-studio 将幻灯片制作与 Agent 环境完全解耦，提供独立的
 |---|---|
 | `jc-slide-studio doctor` | 检查本地环境、Python 依赖与字体资产健康状态 |
 | `jc-slide-studio check <deck.md>` | 静态校验 Markdown 语法、分页分隔符、元数据与静态资源 |
-| `jc-slide-studio render <deck.md>` | 将 Markdown 编译为完全自包含的独立离线 HTML 演示稿 |
+| `jc-slide-studio render <deck.md> --out <DIR>` | 将 Markdown 编译为完全自包含的独立离线 HTML 演示稿 |
 | `jc-slide-studio edit <deck.md>` | 启动本地交互式编辑工作台 |
 | `jc-slide-studio preview <deck.md>` | 启动轻量热重载预览服务器 |
 | `jc-slide-studio serve` | 启动带账号系统的幻灯片库（数据存于服务端） |
+
+### GitHub Pages 工作文件夹
+
+在在线演示中进入「在线编辑」，点击「打开工作文件夹」，选择包含 Markdown 和图片的目录。图片路径以该 Markdown 的所在目录为起点，支持文件夹内的上级引用。带空格的路径可写成 `![图](<../figures/图 1.png>)`。
+
+本地图片会嵌入导出的 HTML。浏览器授权写入后，可点「保存到本地」写回原 Markdown 文件。通过只读目录选择器打开时，使用「导出 .md」保存编辑稿。
 
 ### 幻灯片库模式
 
 `serve` 不绑定本地文件，浏览器打开后先登录，再进入「我的演示稿」：
 正文保存在服务端数据库，每次保存留下完整版本快照，账号之间数据隔离；
-可一次导入多个本地 `.md`。`edit <deck.md>` 仍是原来的离线单文件模式，两者互不影响。
+可一次导入多个本地 `.md`。用「导入文件夹（含图片）」一起上传 Markdown 和图片，可保留目录结构与相对引用。进入演示稿后，也可在「图片」面板追加上传并插入 Markdown 引用。
 
 ```bash
 jc-slide-studio serve --port 9000

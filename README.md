@@ -26,17 +26,25 @@ Key views and workflows include:
 |---------|-------------|
 | `jc-slide-studio doctor` | Check environment, dependencies, and font assets health status |
 | `jc-slide-studio check <deck.md>` | Validate Markdown syntax, slide delimiters, frontmatter, and assets |
-| `jc-slide-studio render <deck.md>` | Compile Markdown into a standalone offline HTML presentation |
+| `jc-slide-studio render <deck.md> --out <DIR>` | Compile Markdown into a standalone offline HTML presentation |
 | `jc-slide-studio edit <deck.md>` | Launch the interactive local studio workbench |
 | `jc-slide-studio preview <deck.md>` | Launch a lightweight live-reloading presentation preview server |
 | `jc-slide-studio serve` | Start the account-based deck library (server-side storage, no bound file) |
+
+### GitHub Pages workspace
+
+Open the online editor from the demo and choose **Open workspace folder** (打开工作文件夹). Select a folder containing the Markdown and images. Image paths are relative to each Markdown file, including parent directories within the selected folder. Use angle brackets around paths with spaces, for example `![Figure](<../figures/Figure 1.png>)`.
+
+HTML export embeds the local images. When your browser grants write access, **Save locally** (保存到本地) writes changes to the original Markdown file. The read-only directory picker supports **Export .md**.
 
 ### Deck library mode
 
 `serve` starts the same workbench with a sign-in screen and a deck library:
 decks are stored in a server-side SQLite database, every save keeps a full
-revision snapshot, and each account only sees its own decks. Local `.md` files
-can be imported in bulk. `edit <deck.md>` remains the offline single-file mode.
+revision snapshot, and each account only sees its own decks. Import a folder
+to upload Markdown and images together while preserving their relative paths.
+To add images after import, use the **Images** (图片) panel in the deck editor.
+Uploads are stored under `assets/` in the studio data directory.
 
 ```bash
 jc-slide-studio serve --port 9000

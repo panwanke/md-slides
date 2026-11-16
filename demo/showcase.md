@@ -109,7 +109,7 @@ $$f(x \mid \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(x -
 ::: box 极简语法的力量
 - 无需繁重的闭合 HTML 标签
 - 单个 `+++` 即可实现响应式双栏排版
-- 单命令一键编译打包：`jc-slide-studio render deck.md`
+- 单命令一键编译打包：`jc-slide-studio render deck.md --out ./dist`
 :::
 
 ---

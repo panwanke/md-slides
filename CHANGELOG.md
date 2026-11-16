@@ -4,6 +4,10 @@ All notable changes to `jc-slide-studio` will be documented in this file.
 
 ## [Unreleased]
 
+- 恢复 jc-slides 出片前的逐字稿验收闸门：`check` 新增 `--strict`，把缺讲稿与字数越界（中文 100–400 字符 / 英文 80–320 words）升级为 error；`ok=false` 时返回退出码 1，供技能侧 `--check` 委托阻断出片。`layout=journal|section` 缺讲稿仍不阻断。
+- 修正文档中缺 `--out` 的 `render` 命令示例（`--out` 为必填项），涉及双语 README、示例稿、内置模板及 CloudBase Run 部署副本。
+- 技能侧 `build_deck.py` 委托契约对齐：透传 `--filename` 恢复「源目录名.html」产物命名；工具不可用或协议不匹配时显式报错而非静默回退旧渲染；`--format directory` 明确拒绝并说明当前仅支持单文件独立成片。
+
 - 修复登录后无法新建演示稿问题：将系统原生 prompt 升级为应用内模态弹窗（Modal），新建成功后自动跳转打开编辑工作台，并优化空状态一键新建与重命名、删除模态交互。
 - 新增形态 A（GitHub Pages 静态试用站）：浏览器内通过 Pyodide 运行同一套 Python 渲染引擎，可编辑 Markdown、实时预览、导入/导出，无需登录与后端；运行时随站点打包，不依赖外部 CDN。
 - 新增形态 B 部署物料：`docs/ops/` 下 Dockerfile、systemd unit、nginx 模板与[自建服务部署 Runbook](docs/ops/deploy_service_runbook.md)；业务代码零改动。
