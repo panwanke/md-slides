@@ -47,12 +47,15 @@ export interface Deck {
 export type SaveStatus =
   | 'loading' | 'saved' | 'pending' | 'saving' | 'save-error' | 'load-error' | 'conflict';
 export type Mode = 'live' | 'source';
+export type EditorSelection = { anchor: number; head: number };
 
 interface Callbacks {
-  onLoad: (doc: LoadedDeck) => void;
+  onLoad: (doc: LoadedDeck) => { mode: Mode; selection?: EditorSelection } | void;
   onSave: (deck: Deck) => void;
   onStatus: (status: SaveStatus) => void;
-  onCursor: (page: number, line: number, column: number, layout: string) => void;
+  onCursor: (
+    page: number, line: number, column: number, layout: string, selection: EditorSelection, followPreview: boolean,
+  ) => void;
   onChange?: (content: string) => void;
 }
 
@@ -130,13 +133,21 @@ export class EditorSession {
                 this.callbacks.onStatus('pending');
                 this.scheduleSave();
               }
-              if (update.selectionSet || update.docChanged) this.reportCursor();
+              if (update.selectionSet || update.docChanged) this.reportCursor(update.view.hasFocus);
             }),
           ],
         }),
       });
-      this.callbacks.onLoad({ ...loaded, ast: deck });
-      this.selectSlide(1, false);
+      const restored = this.callbacks.onLoad({ ...loaded, ast: deck });
+      if (restored?.mode === 'source') this.setMode('source');
+      if (restored?.selection) {
+        const clamp = (pos: number) => Math.max(0, Math.min(content.length, pos));
+        const anchor = clamp(restored.selection.anchor);
+        const head = clamp(restored.selection.head);
+        this.view.dispatch({ selection: { anchor, head }, effects: EditorView.scrollIntoView(head, { y: 'center' }) });
+      } else {
+        this.selectSlide(1, false);
+      }
       this.reportCursor();
       this.callbacks.onStatus('saved');
     } catch (error) {
@@ -248,16 +259,16 @@ export class EditorSession {
       && region.from >= from && region.to <= to);
   }
 
-  private reportCursor() {
+  private reportCursor(followPreview = false) {
     const view = this.view;
     if (!view) return;
-    const cursor = view.state.selection.main.head;
+    const { anchor, head: cursor } = view.state.selection.main;
     const line = view.state.doc.lineAt(cursor);
     const slide = this.slideAt(cursor);
     const meta = slide && this.directiveFor(slide, view.state);
     const attributes = meta?.text.match(slideDirective)?.[2] ?? '';
     this.callbacks.onCursor(slide?.index ?? 1, line.number, cursor - line.from + 1,
-      getAttribute(attributes, 'layout'));
+      getAttribute(attributes, 'layout'), { anchor, head: cursor }, followPreview);
   }
 
   selectSlide(page: number, scroll = true) {

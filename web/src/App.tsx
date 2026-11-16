@@ -6,13 +6,15 @@ import {
   StickyNote, Trash2, Upload, X,
 } from 'lucide-react';
 import { EditorSession } from './editorSession';
-import type { Deck, Mode, PreviewClick, SaveStatus, SlideSummary } from './editorSession';
+import type { Deck, EditorSelection, Mode, PreviewClick, SaveStatus, SlideSummary } from './editorSession';
 import { layouts } from './slideSyntax';
 import { LocalFileStore } from './store/localFile';
 import { deckApi } from './store/remote';
 import type { DeckAsset } from './store/remote';
 import type { DeckStore } from './store/types';
 import { mediaFile } from './store/workspace';
+import { readWorkbenchView, writeWorkbenchView } from './store/workbenchView';
+import type { Pane } from './store/workbenchView';
 import { shortcutText, useShortcut, useShortcuts } from './shortcuts';
 import ProjectControls from './ui/ProjectControls';
 import { downloadText } from './render/download';
@@ -41,9 +43,9 @@ export interface WorkbenchProps {
   onPresent?: (page: number) => void;
   onDocChange?: (content: string) => void;
   sessionRef?: MutableRefObject<EditorSession | undefined>;
+  viewKey?: string;
 }
 
-type Pane = 'outline' | 'editor' | 'preview';
 type Split = 'outline' | 'editor';
 
 function assetSnippet(path: string) {
@@ -62,6 +64,8 @@ interface PlayerState {
 interface DeckPlayer {
   getState: () => PlayerState;
   goTo: (page: number, step?: number) => PlayerState;
+  next: () => void;
+  previous: () => void;
 }
 
 const statusLabels: Record<SaveStatus, string> = {
@@ -157,12 +161,15 @@ export default function App({
   onPresent,
   onDocChange,
   sessionRef,
+  viewKey,
 }: WorkbenchProps = {}) {
   const [file, setFile] = useState<{ source: string; fullPath: string; assetBase?: string }>();
   const [deck, setDeck] = useState<Deck>();
   const [status, setStatus] = useState<SaveStatus>('loading');
   const [activePage, setActivePage] = useState(1);
-  const [cursor, setCursor] = useState({ line: 1, column: 1, layout: '' });
+  const [cursor, setCursor] = useState<{ line: number; column: number; layout: string; selection?: EditorSelection }>({
+    line: 1, column: 1, layout: '',
+  });
   const [mode, setMode] = useState<Mode>('live');
   const [insertMenu, setInsertMenu] = useState(false);
   const [closed, setClosed] = useState<Set<string>>(() => new Set());
@@ -198,6 +205,7 @@ export default function App({
   const outline = useRef<HTMLElement>(null);
   const editorPane = useRef<HTMLElement>(null);
   const active = useRef(1);
+  const slideCount = useRef(0);
   const byStep = useRef(false);
   const step = useRef(0);
   const drivingPreview = useRef(false);
@@ -221,6 +229,34 @@ export default function App({
     setPlayerState(state);
   }
 
+  function updatePreviewPage(page: number) {
+    active.current = Math.max(1, Math.min(slideCount.current, page));
+    setActivePage(active.current);
+  }
+
+  function navigatePreview(page: number) {
+    updatePreviewPage(page);
+    drivePreview(active.current);
+  }
+
+  function previewArrows(event: globalThis.KeyboardEvent) {
+    if ((event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
+        || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.isComposing
+        || !slideCount.current) return;
+    const target = event.target as Element | null;
+    if (target?.closest?.('input, select, textarea, [contenteditable="true"]')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const forwards = event.key === 'ArrowRight';
+    const deckPlayer = player(frame.current);
+    if (byStep.current && deckPlayer) {
+      if (forwards) deckPlayer.next();
+      else deckPlayer.previous();
+    } else {
+      navigatePreview(active.current + (forwards ? 1 : -1));
+    }
+  }
+
   useEffect(() => {
     function showRevision(revision: number) {
       setPreviewRevision((current) => Math.max(revision, current));
@@ -229,16 +265,34 @@ export default function App({
     // Storage seam: swap LocalFileStore for a remote store to move the deck off
     // this machine. Nothing else in the workbench needs to change.
     const editor = new EditorSession(host.current!, {
-      onLoad(doc) { setFile(doc); setDeck(doc.ast); showRevision(doc.ast.documentRevision); },
-      onSave(next) { setDeck(next); showRevision(next.documentRevision); },
+      onLoad(doc) {
+        slideCount.current = doc.ast.slides.length;
+        const previous = readWorkbenchView(viewKey ?? doc.fullPath);
+        updatePreviewPage(previous?.page ?? 1);
+        if (previous) {
+          setMode(previous.mode);
+          setPane(previous.pane);
+          setClosed(new Set(previous.closed));
+          byStep.current = previous.stepped;
+          step.current = previous.step;
+          setStepped(previous.stepped);
+        }
+        setFile(doc);
+        setDeck(doc.ast);
+        showRevision(doc.ast.documentRevision);
+        return previous;
+      },
+      onSave(next) {
+        slideCount.current = next.slides.length;
+        if (active.current > slideCount.current) updatePreviewPage(active.current);
+        setDeck(next);
+        showRevision(next.documentRevision);
+      },
       onStatus: setStatus,
       onChange: onDocChange,
-      onCursor(page, line, column, layout) {
-        setCursor({ line, column, layout });
-        if (active.current === page) return;
-        active.current = page;
-        setActivePage(page);
-        drivePreview(page);
+      onCursor(page, line, column, layout, selection, followPreview) {
+        setCursor({ line, column, layout, selection });
+        if (followPreview && active.current !== page) navigatePreview(page);
       },
     }, store ?? new LocalFileStore());
     session.current = editor;
@@ -265,7 +319,10 @@ export default function App({
     function onPreviewMessage(event: MessageEvent<PreviewClick & { type?: string }>) {
       if (event.source !== frame.current?.contentWindow) return;
       if (!staticMode && event.origin !== location.origin) return;
-      if (event.data?.type === 'ELEMENT_CLICKED') editor.revealElement(event.data);
+      if (event.data?.type === 'ELEMENT_CLICKED'
+          && ['heading', 'text', 'image', 'notes', 'diagram'].includes(event.data.nodeType)) {
+        editor.revealElement(event.data);
+      }
     }
     function onPaste(event: ClipboardEvent) {
       if (!deckId || !(event.target instanceof Node) || !host.current?.contains(event.target)) return;
@@ -423,7 +480,14 @@ export default function App({
     try { localStorage.setItem('md-slide-studio-workbench-split', JSON.stringify(split)); } catch { /* Optional. */ }
   }, [split]);
 
+  useEffect(() => {
+    if (file) writeWorkbenchView(viewKey ?? file.fullPath, {
+      page: activePage, mode, pane, selection: cursor.selection, closed: [...closed], stepped, step: step.current,
+    });
+  }, [file, viewKey, activePage, mode, pane, cursor.selection, closed, stepped, playerState?.step]);
+
   function navigate(page: number) {
+    navigatePreview(page);
     session.current?.selectSlide(page);
     if (pane === 'outline') setPane('editor');
   }
@@ -436,12 +500,16 @@ export default function App({
     }
     if (connectedPreview.current === document) return;
     connectedPreview.current = document;
+    document.addEventListener('keydown', previewArrows, true);
     drivePreview(active.current, true);
     document.addEventListener('deck-state', (event) => {
       const next = (event as CustomEvent<PlayerState>).detail;
       setPlayerState(next);
       if (byStep.current) step.current = next.step;
-      if (!drivingPreview.current && next.page !== active.current) session.current?.selectSlide(next.page);
+      if (!drivingPreview.current && next.page !== active.current) {
+        updatePreviewPage(next.page);
+        if (!byStep.current && next.step < next.steps) drivePreview(next.page);
+      }
     });
   }
 
@@ -713,7 +781,11 @@ export default function App({
             <h2><Monitor size={17} /> 成片预览</h2>
             <span className="preview-ratio">16:9</span>
           </div>
-          <div className="preview-stage">
+          <div className="preview-stage" role="group" aria-label="预览翻页" tabIndex={0}
+            onPointerDown={(event) => {
+              if (event.button === 0) event.currentTarget.focus({ preventScroll: true });
+            }}
+            onKeyDown={(event) => previewArrows(event.nativeEvent)}>
             <div className="frame-fit" ref={stage}>
               {file && <div className="frame-assembly" style={{ width: 1280 * scale }}>
                 <div className="frame-box" style={{ height: 720 * scale }}>
@@ -733,7 +805,7 @@ export default function App({
             </div>
           </div>
           <PreviewControls page={activePage} total={total} stepped={stepped} state={playerState}
-            onToggle={toggleStepped} onStep={jumpStep} onNavigate={navigate} />
+            onToggle={toggleStepped} onStep={jumpStep} onNavigate={navigatePreview} />
         </section>
       </main>
 

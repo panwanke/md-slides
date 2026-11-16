@@ -248,6 +248,7 @@ export default function WorkspaceStudio({ bound = false }: { bound?: boolean }) 
   return (
     <Workbench
       key={opened?.id ?? 'bound'}
+      viewKey={opened ? (opened.id === 0 ? 'sample' : `browser:${workspace?.name ?? ''}/${documentPath}`) : undefined}
       staticMode={Boolean(opened)}
       store={store}
       sessionRef={session}
