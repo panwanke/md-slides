@@ -50,6 +50,10 @@ class DeckRename(BaseModel):
     title: str
 
 
+class DisplayNameUpdate(BaseModel):
+    displayName: Optional[str] = None
+
+
 class ImportPayload(BaseModel):
     files: List[Dict[str, str]]
 
@@ -106,6 +110,17 @@ def logout(request: Request, response: Response):
 @router.get("/auth/me")
 def me(user: Dict[str, Any] = Depends(current_user)):
     return {"ok": True, "user": user}
+
+
+@router.patch("/auth/me")
+def update_me(payload: DisplayNameUpdate, user: Dict[str, Any] = Depends(current_user)):
+    try:
+        updated = service.update_display_name(user["id"], payload.displayName)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    if not updated:
+        raise HTTPException(status_code=404, detail="账户不存在")
+    return {"ok": True, "user": updated}
 
 
 # ---------------------------------------------------------------------------

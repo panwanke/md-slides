@@ -92,6 +92,17 @@ export default function Shell() {
     setHash(location.hash);
   }
 
+  async function updateDisplayName(displayName: string) {
+    const response = await fetch('/api/auth/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '保存用户名失败');
+    setUser(data.user as StudioUser);
+  }
+
   if (mode === 'checking') return <div className="boot-screen">正在检查运行模式…</div>;
   if (mode === 'local') return <WorkspaceStudio boundPath={boundPath} />;
   if (!user) return <Login onSignedIn={signedIn} />;
@@ -106,9 +117,10 @@ export default function Shell() {
         presentUrl={`/api/decks/${deckId}/preview?embedded=0`}
         onExit={() => { location.hash = '#/library'; }}
         userLabel={user.displayName || user.email}
+        account={{ user, onUpdate: updateDisplayName }}
       />
     );
   }
 
-  return <Library user={user} onSignOut={() => void signOut()} />;
+  return <Library user={user} onSignOut={() => void signOut()} onUpdateUser={updateDisplayName} />;
 }

@@ -53,6 +53,7 @@ interface Callbacks {
   onLoad: (doc: LoadedDeck) => { mode: Mode; selection?: EditorSelection } | void;
   onSave: (deck: Deck) => void;
   onStatus: (status: SaveStatus) => void;
+  onLoadError?: (message: string) => void;
   onCursor: (
     page: number, line: number, column: number, layout: string, selection: EditorSelection, followPreview: boolean,
   ) => void;
@@ -153,6 +154,8 @@ export class EditorSession {
     } catch (error) {
       if (this.destroyed) return;
       console.error(error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.callbacks.onLoadError?.(message);
       this.callbacks.onStatus('load-error');
     }
   }

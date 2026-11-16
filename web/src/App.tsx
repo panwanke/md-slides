@@ -18,6 +18,7 @@ import { readWorkbenchView, writeWorkbenchView } from './store/workbenchView';
 import type { Pane, WorkbenchView } from './store/workbenchView';
 import { shortcutText, useShortcut, useShortcuts } from './shortcuts';
 import ProjectControls from './ui/ProjectControls';
+import type { AccountSettingsProps } from './ui/ProjectControls';
 import { downloadText } from './render/download';
 import { exportServerDeck } from './render/serverEngine';
 import './workbench.css';
@@ -33,6 +34,8 @@ export interface WorkbenchProps {
   /** When provided, the header offers a way back to the deck library. */
   onExit?: () => void;
   userLabel?: string;
+  /** Account shown in the settings dialog; omitted in local/static mode. */
+  account?: AccountSettingsProps;
   /** Static mode options (for GitHub Pages / pure client) */
   staticMode?: boolean;
   /** Client-side Pyodide preview with cloud persistence (no FastAPI preview route). */
@@ -219,6 +222,7 @@ export default function App({
   presentUrl = '/preview/live',
   onExit,
   userLabel,
+  account,
   staticMode = false,
   clientRender = false,
   previewSrcDoc,
@@ -239,6 +243,7 @@ export default function App({
   const [file, setFile] = useState<{ source: string; fullPath: string; assetBase?: string }>();
   const [deck, setDeck] = useState<Deck>();
   const [status, setStatus] = useState<SaveStatus>('loading');
+  const [loadError, setLoadError] = useState('');
   const [activePage, setActivePage] = useState(1);
   const [cursor, setCursor] = useState<{ line: number; column: number; layout: string; selection?: EditorSelection }>({
     line: 1, column: 1, layout: '',
@@ -339,6 +344,7 @@ export default function App({
     // this machine. Nothing else in the workbench needs to change.
     const editor = new EditorSession(host.current!, {
       onLoad(doc) {
+        setLoadError('');
         slideCount.current = doc.ast.slides.length;
         const previous = viewState?.current ?? readWorkbenchView(viewKey ?? doc.fullPath);
         updatePreviewPage(previous?.page ?? 1);
@@ -362,6 +368,9 @@ export default function App({
         showRevision(next.documentRevision);
       },
       onStatus: setStatus,
+      onLoadError(message) {
+        setLoadError(message);
+      },
       onChange: onDocChange,
       onCursor(page, line, column, layout, selection, followPreview) {
         setCursor({ line, column, layout, selection });
@@ -727,7 +736,7 @@ export default function App({
             </a>
           )}
         </div>
-        <ProjectControls />
+        <ProjectControls account={account} />
       </header>
       {tabBar}
       {exportError && <p className="export-error" role="alert">导出失败：{exportError}</p>}
@@ -836,8 +845,9 @@ export default function App({
             <div className="editor-empty">
               <FileText size={25} />
               <p>{status === 'load-error' ? '无法打开当前 Markdown 文件' : '正在读取 Markdown…'}</p>
+              {status === 'load-error' && loadError && <p className="load-error-detail">{loadError}</p>}
               {status === 'load-error' && <button className="button" type="button"
-                onClick={() => { setStatus('loading'); void session.current?.load(); }}>重新加载</button>}
+                onClick={() => { setLoadError(''); setStatus('loading'); void session.current?.load(); }}>重新加载</button>}
             </div>
           )}
           <footer className="editor-footer">

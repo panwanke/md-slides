@@ -235,9 +235,39 @@ svg { flex: none; vertical-align: middle; }
 .shortcut-dialog-header { border-bottom: 1px solid var(--line); }
 .shortcut-dialog-footer { border-top: 1px solid var(--line); }
 .shortcut-dialog-header h2 { margin: 0; font-size: 18px; }
-.shortcut-dialog-body { padding: 18px 20px; }
+.shortcut-dialog-body { padding: 18px 20px; max-height: calc(100dvh - 130px); overflow-y: auto; }
 .shortcut-dialog-body h3 { margin: 0 0 6px; font-size: 15px; }
+.shortcut-dialog-body h3:not(:first-child) { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
 .shortcut-dialog-body p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.account-info { margin: 0; }
+.account-info > div {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.account-info dt { color: var(--muted); }
+.account-info dd { margin: 0; overflow-wrap: anywhere; text-align: right; }
+.account-name-form { margin-top: 14px; }
+.account-name-form > label { display: block; margin-bottom: 6px; font-size: 13px; }
+.account-name-row { display: flex; gap: 8px; }
+.account-name-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.account-name-row input:focus { outline: 2px solid var(--accent-pale); border-color: var(--accent); }
+.account-name-row .button { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.account-message { margin-top: 6px !important; font-size: 12px !important; }
 .shortcut-list { margin: 14px 0 0; }
 .shortcut-row {
   display: flex;
@@ -472,6 +502,14 @@ svg { flex: none; vertical-align: middle; }
 }
 
 .editor-empty p { margin: 0; }
+.editor-empty .load-error-detail {
+  max-width: 420px;
+  color: var(--accent-ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
 .editor-footer { justify-content: space-between; gap: 7px; background: #f7f7f0; }
 .layout-control { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .layout-control select, .syntax-field select, .syntax-field input {

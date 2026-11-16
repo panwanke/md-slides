@@ -109,6 +109,20 @@ def authenticate(email: str, password: str) -> Optional[Dict[str, Any]]:
     return _public_user(row)
 
 
+def update_display_name(user_id: str, display_name: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Update the display name for a user, returning the refreshed public record."""
+    name = (display_name or "").strip()
+    if len(name) > 40:
+        raise ValueError("用户名最多 40 个字符")
+    with connect() as conn:
+        conn.execute(
+            "update users set display_name = ? where id = ?",
+            (name or None, user_id),
+        )
+        row = conn.execute("select * from users where id = ?", (user_id,)).fetchone()
+    return _public_user(row) if row else None
+
+
 def create_session(user_id: str) -> str:
     token, digest = new_session_token()
     issued = datetime.now(timezone.utc)

@@ -56,11 +56,15 @@ const THEME_OPTIONS = [
 ];
 
 export default function Library({
-  user, onSignOut,
+  user, onSignOut, onUpdateUser,
 }: {
   user: StudioUser;
   onSignOut: () => void;
+  /** Self-hosted: persists the new display name on the server. Cloud mode omits this (read-only). */
+  onUpdateUser?: (displayName: string) => Promise<void>;
 }) {
+  const [currentUser, setCurrentUser] = useState(user);
+  useEffect(() => { setCurrentUser(user); }, [user]);
   const [decks, setDecks] = useState<DeckMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -272,8 +276,16 @@ export default function Library({
         <div className="brand"><span className="brand-mark"><Presentation size={19} strokeWidth={1.8} /></span>
           <span>Slide Studio</span></div>
         <div className="library-account">
-          <ProjectControls />
-          <span title={user.email}>{user.displayName || user.email}</span>
+          <ProjectControls account={{
+            user: currentUser,
+            ...(onUpdateUser ? {
+              onUpdate: async (displayName) => {
+                await onUpdateUser(displayName);
+                setCurrentUser((previous) => ({ ...previous, displayName }));
+              },
+            } : {}),
+          }} />
+          <span title={currentUser.email}>{currentUser.displayName || currentUser.email}</span>
           <button type="button" className="button" onClick={onSignOut} title="退出登录">
             <LogOut size={15} /> 退出
           </button>
