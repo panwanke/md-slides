@@ -228,3 +228,29 @@ def test_deck_assets_upload_list_and_delete(client):
     remaining = [a["path"] for a in client.get(f"/api/decks/{deck_id}/assets").json()["assets"]]
     assert "figure1.png" not in remaining
     assert "images/subfig.jpg" in remaining
+
+
+def test_folder_assets_resolve_from_markdown_directory(client):
+    signup(client, "folder-assets@example.com")
+    deck_id = client.post("/api/decks", json={
+        "title": "Nested deck", "content": "# Images\n\n![Shared](<../shared/图 %231.svg>)\n",
+    }).json()["deck"]["id"]
+    endpoint = f"/api/decks/{deck_id}/assets"
+    image = b'<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>'
+    uploaded = client.post(
+        endpoint,
+        data={"documentPath": "talks/talk.md"},
+        files=[("files", ("shared/图 #1.svg", image, "image/svg+xml"))],
+    )
+    assert uploaded.status_code == 200
+    asset = uploaded.json()["saved"][0]
+    assert asset["path"] == "../shared/图 #1.svg"
+    assert client.get(asset["url"]).content == image
+    assert client.get(f"/api/decks/{deck_id}").json()["assetBase"] == f"{endpoint}/talks/"
+    preview = client.get(f"/api/decks/{deck_id}/preview")
+    assert f'<base href="{endpoint}/talks/">' in preview.text
+    assert 'src="../shared/图 %231.svg"' in preview.text
+
+    direct = client.post(endpoint, files=[("files", ("local.svg", image, "image/svg+xml"))])
+    assert direct.json()["saved"][0]["path"] == "local.svg"
+    assert client.get(f"{endpoint}/talks/local.svg").content == image

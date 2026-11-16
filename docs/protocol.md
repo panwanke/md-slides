@@ -24,7 +24,7 @@ jc-slide-studio doctor --json
 
 ### 1.2 `check`
 ```bash
-jc-slide-studio check <source.md> --json
+jc-slide-studio check <source.md> --json [--strict]
 ```
 响应：
 ```json
@@ -36,6 +36,8 @@ jc-slide-studio check <source.md> --json
   "diagnostics": []
 }
 ```
+
+`--strict` 将「缺逐字稿」与「逐字稿字数越界」升级为 error（`ok=false`），用于 jc-slides 出片前的验收闸门；缺省仅为 warning。字数规则：中文 100–400 字符（去空白），英文 80–320 words；`layout=journal|section` 缺讲稿不阻断。任何 `ok=false` 时 `check` 返回退出码 1，`--json` 仍输出完整诊断。
 
 ### 1.3 `render`
 ```bash
@@ -138,12 +140,15 @@ interface DeckStore {
 | GET | `/api/decks` | 当前用户的 deck 列表（不含正文） |
 | POST | `/api/decks` | `{title, content?}`，同时写入 revision 1 |
 | POST | `/api/decks/import` | `{files:[{name,content}]}`，一次最多 50 个本地 .md |
-| GET | `/api/decks/{id}` | **与 `/api/document` 同形**：`source/fullPath/content/revision/ast` |
+| GET | `/api/decks/{id}` | `source/fullPath/content/revision/ast`，另含图片相对路径的基准 URL `assetBase` |
 | PUT | `/api/decks/{id}` | `{content, baseRevision}` → `revision + ast`；版本落后返回 409 |
 | PATCH | `/api/decks/{id}` | `{title}` 重命名 |
 | DELETE | `/api/decks/{id}` | 软删除 |
 | GET | `/api/decks/{id}/revisions` | 最近 50 个版本元数据（不含正文） |
 | GET | `/api/decks/{id}/preview` | 按会话取正文 → 渲染 HTML，供预览 iframe；`?embedded=0` 用于全屏演示 |
+| GET | `/api/decks/{id}/assets` | 列出演示稿附件，包含相对 Markdown 的 `path` 和用于读取或删除的 `url` |
+| POST | `/api/decks/{id}/assets` | 用 multipart 表单的 `files` 字段上传附件。导入文件夹时另外提交原 Markdown 在文件夹内的 `documentPath` |
+| GET / DELETE | `/api/decks/{id}/assets/{assetPath}` | 按附件的 `url` 读取或删除 |
 
 **写入协议**：每次保存写入一条完整 Markdown 快照（`deck_revisions`），
 `decks.current_revision` 用 `WHERE current_revision = baseRevision` 做乐观锁。

@@ -13,8 +13,10 @@ import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
+from starlette.datastructures import UploadFile
 
 from jc_slide_studio.document.parser import build_document_ast
 from jc_slide_studio.render.engine import render_text
@@ -190,7 +192,7 @@ def preview_deck(deck_id: int, embedded: int = 1, user: Dict[str, Any] = Depends
             status_code=422,
         )
     # Inject <base> tag so relative image paths like images/fig.png hit deck assets
-    base_tag = f'<base href="/api/decks/{deck_id}/assets/">'
+    base_tag = f'<base href="{assets.asset_base_url(deck_id)}">'
     if "<head>" in html_text and "<base" not in html_text:
         html_text = html_text.replace("<head>", f"<head>\n    {base_tag}", 1)
     return HTMLResponse(content=html_text)
@@ -210,7 +212,11 @@ def get_asset(deck_id: int, asset_path: str, user: Dict[str, Any] = Depends(curr
     file_path = assets.get_deck_asset_path(deck_id, asset_path)
     if not file_path:
         raise HTTPException(status_code=404, detail="资源不存在")
-    return FileResponse(file_path)
+    return FileResponse(file_path, headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox",
+    })
 
 
 @router.post("/decks/{deck_id}/assets")
@@ -221,21 +227,22 @@ async def upload_assets(
 ):
     if not service.get_deck(user["id"], deck_id):
         raise HTTPException(status_code=404, detail="演示稿不存在")
-    form = await request.form()
-    saved: List[Dict[str, Any]] = []
-    for key, value in form.multi_items():
-        if hasattr(value, "filename") and hasattr(value, "read"):
-            filename = getattr(value, "filename", "") or "file"
-            content = await value.read()
-            try:
-                clean_name = assets.save_deck_asset(deck_id, filename, content)
-                saved.append({
-                    "path": clean_name,
-                    "url": f"/api/decks/{deck_id}/assets/{clean_name}",
-                    "size": len(content),
-                })
-            except ValueError as error:
-                raise HTTPException(status_code=400, detail=str(error))
+    async with request.form() as form:
+        files = [
+            (value.filename or "", value.file)
+            for _, value in form.multi_items()
+            if isinstance(value, UploadFile)
+        ]
+        document_path = form.get("documentPath")
+        if not files and not isinstance(document_path, str):
+            raise HTTPException(status_code=400, detail="请选择要上传的图片或附件")
+        try:
+            saved = await run_in_threadpool(
+                assets.save_deck_assets, deck_id, files,
+                document_path if isinstance(document_path, str) else None,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
     return {"ok": True, "saved": saved, "count": len(saved)}
 
 
@@ -260,6 +267,7 @@ def get_deck(deck_id: int, user: Dict[str, Any] = Depends(current_user)):
         "fullPath": f"deck://{deck_id}",
         "content": content,
         "revision": deck["revision"],
+        "assetBase": assets.asset_base_url(deck_id),
         "ast": build_document_ast(content, revision=deck["revision"]),
         "deck": deck,
     }

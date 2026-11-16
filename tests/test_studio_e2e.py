@@ -137,3 +137,45 @@ def test_empty_state_create_rename_and_delete(library_server):
 
         assert not errors
         browser.close()
+
+
+def test_folder_import_and_image_upload_refresh_both_previews(library_server, tmp_path):
+    (tmp_path / "talks").mkdir()
+    (tmp_path / "shared").mkdir()
+    image = b'<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>'
+    (tmp_path / "shared" / "图 #1.svg").write_bytes(image)
+    (tmp_path / "talks" / "deck.md").write_text(
+        "# Test\n\n![Shared](<../shared/图 %231.svg>)\n\n"
+        "![Direct](new%20%231.svg)\n",
+        encoding="utf-8",
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        response = page.request.post(f"{library_server}/api/auth/signup", data={
+            "email": "images@example.com", "password": "password123",
+        })
+        assert response.ok
+        page.goto(library_server)
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name="导入文件夹", exact=False).click()
+        chooser.value.set_files(tmp_path)
+
+        frame = page.frame_locator("#previewFrame")
+        editor = page.locator("#editor")
+        editor.locator(".cm-line").first.click()
+        for region in (frame, editor):
+            shared = region.get_by_alt_text("Shared")
+            shared.wait_for(timeout=5_000)
+            assert shared.evaluate("(img) => img.decode().then(() => img.naturalWidth)") == 8
+
+        page.get_by_role("button", name="图片", exact=True).click()
+        page.locator(".assets-toolbar input").first.set_input_files({
+            "name": "new #1.svg", "mimeType": "image/svg+xml", "buffer": image,
+        })
+        expect(page.locator(".asset-path").filter(has_text="new #1.svg")).to_be_visible()
+        for region in (frame, editor):
+            direct = region.get_by_alt_text("Direct")
+            direct.wait_for(timeout=5_000)
+            assert direct.evaluate("(img) => img.decode().then(() => img.naturalWidth)") == 8
+        browser.close()

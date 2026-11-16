@@ -1,105 +1,150 @@
-"""Asset (image and media) storage and retrieval for slide decks.
-
-Every deck gets an isolated directory under ``~/.jc-slide-studio/assets/{deck_id}/``.
-This allows markdown documents to use relative paths like ``![img](images/fig1.png)``
-or ``![](assets/photo.jpg)`` both in live editing, iframe preview, and exported bundles.
-"""
+"""Store media and the original Markdown directory for each deck."""
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 import mimetypes
+import os
+import posixpath
+from pathlib import Path
+from shutil import copyfileobj
+from tempfile import NamedTemporaryFile
+from typing import BinaryIO
+from urllib.parse import quote
 
+from jc_slide_studio.render.delivery import atomic_write
 from jc_slide_studio.studio.db import data_dir
 
 ALLOWED_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".tiff",
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".bmp", ".ico", ".tif", ".tiff",
     ".mp4", ".webm", ".mp3", ".wav", ".pdf",
 }
+DOCUMENT_DIRECTORY_FILE = ".document-directory"
 
 
-def get_deck_assets_dir(deck_id: int) -> Path:
-    """Resolve and create the storage directory for a specific deck's assets."""
-    target = data_dir() / "assets" / str(deck_id)
-    target.mkdir(parents=True, exist_ok=True)
-    return target
+def _asset_root(deck_id: int) -> Path:
+    return data_dir() / "assets" / str(deck_id)
 
 
 def _clean_path(relative_path: str) -> str:
-    # Normalize separators and reject any directory traversal attempts
-    cleaned = relative_path.replace("\\", "/").strip().lstrip("/")
-    parts = []
-    for segment in cleaned.split("/"):
-        if segment in ("", "."):
-            continue
-        if segment == "..":
-            raise ValueError("非法路径: 不允许包含父级目录引用 (..)")
-        parts.append(segment)
+    path = relative_path.replace("\\", "/")
+    parts = [part for part in path.split("/") if part not in ("", ".")]
+    if not parts or path.startswith("/") or any(
+        part in ("..", DOCUMENT_DIRECTORY_FILE) or any(char in part for char in ":\0\r\n")
+        for part in parts
+    ):
+        raise ValueError("Invalid relative asset path")
     return "/".join(parts)
 
 
-def save_deck_asset(deck_id: int, relative_path: str, data: bytes) -> str:
-    """Save an asset byte payload under a clean relative path."""
-    clean_rel = _clean_path(relative_path)
-    if not clean_rel:
-        raise ValueError("无效的资产路径")
-
-    ext = Path(clean_rel).suffix.lower()
-    if ext and ext not in ALLOWED_EXTENSIONS:
-        raise ValueError(f"不支持的媒体文件类型: {ext}")
-
-    assets_root = get_deck_assets_dir(deck_id).resolve()
-    target_file = (assets_root / clean_rel).resolve()
-
-    # Safety check: ensure file stays within deck's assets folder
-    if not target_file.is_relative_to(assets_root):
-        raise ValueError("非法的文件路径越界")
-
-    target_file.parent.mkdir(parents=True, exist_ok=True)
-    target_file.write_bytes(data)
-    return clean_rel
+def _document_directory(deck_id: int) -> str:
+    metadata = _asset_root(deck_id) / DOCUMENT_DIRECTORY_FILE
+    return metadata.read_text(encoding="utf-8") if metadata.is_file() else ""
 
 
-def get_deck_asset_path(deck_id: int, relative_path: str) -> Optional[Path]:
-    """Retrieve absolute path to an asset file if it exists safely."""
-    clean_rel = _clean_path(relative_path)
-    if not clean_rel:
+def asset_url(deck_id: int, path: str = "") -> str:
+    return f"/api/decks/{deck_id}/assets/{quote(path)}"
+
+
+def asset_base_url(deck_id: int) -> str:
+    directory = _document_directory(deck_id)
+    return asset_url(deck_id, directory + "/" if directory else "")
+
+
+def _target_path(deck_id: int, path: str) -> Path:
+    root = _asset_root(deck_id).resolve()
+    target = (root / _clean_path(path)).resolve()
+    if not target.is_relative_to(root):
+        raise ValueError("Asset is outside the deck directory")
+    return target
+
+
+def _describe_asset(deck_id: int, path: str, size: int, directory: str) -> dict:
+    return {
+        "name": posixpath.basename(path),
+        "path": posixpath.relpath("/" + path, "/" + directory),
+        "size": size,
+        "mimeType": mimetypes.guess_type(path)[0] or "application/octet-stream",
+        "url": asset_url(deck_id, path),
+    }
+
+
+def _existing_media(path: Path) -> bool:
+    if path.suffix:
+        return path.suffix.lower() in ALLOWED_EXTENSIONS
+    # Older uploads could be stored without a filename extension.
+    return not path.name.startswith(".")
+
+
+def save_deck_assets(
+    deck_id: int, files: list[tuple[str, BinaryIO]], document_path: str | None = None
+) -> list[dict]:
+    """Save uploaded media. Folder imports use paths relative to the selected folder."""
+    current_directory = _document_directory(deck_id)
+    directory = current_directory
+    if document_path is not None:
+        directory = posixpath.dirname(_clean_path(document_path))
+        if current_directory and directory != current_directory:
+            raise ValueError("The deck already has a different document directory")
+
+    pending = []
+    for filename, stream in files:
+        path = _clean_path(filename)
+        extension = Path(path).suffix.lower()
+        if extension not in ALLOWED_EXTENSIONS:
+            raise ValueError(f"Unsupported media file type: {extension or filename}")
+        if document_path is None:
+            path = posixpath.join(directory, path)
+        target = _target_path(deck_id, path)
+        if target.is_dir() or any(parent.is_file() for parent in target.parents):
+            raise ValueError(f"Asset path conflicts with an existing file or folder: {filename}")
+        pending.append((path, target, stream))
+
+    saved = []
+    for path, target, stream in pending:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with NamedTemporaryFile(dir=target.parent, prefix=".upload-", suffix=".tmp", delete=False) as output:
+                temporary = Path(output.name)
+                copyfileobj(stream, output)
+                size = output.tell()
+            os.replace(temporary, target)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        saved.append(_describe_asset(deck_id, path, size, directory))
+    if directory != current_directory:
+        atomic_write(_asset_root(deck_id) / DOCUMENT_DIRECTORY_FILE, directory)
+    return saved
+
+
+def get_deck_asset_path(deck_id: int, relative_path: str) -> Path | None:
+    try:
+        target = _target_path(deck_id, relative_path)
+    except ValueError:
         return None
-    assets_root = get_deck_assets_dir(deck_id).resolve()
-    target_file = (assets_root / clean_rel).resolve()
-    if target_file.is_file() and target_file.is_relative_to(assets_root):
-        return target_file
+    if _existing_media(target) and target.is_file():
+        return target
     return None
 
 
-def list_deck_assets(deck_id: int) -> List[Dict[str, Any]]:
-    """List all assets stored for the given deck."""
-    assets_root = get_deck_assets_dir(deck_id).resolve()
-    if not assets_root.is_dir():
-        return []
-
-    results: List[Dict[str, Any]] = []
-    for file_path in assets_root.rglob("*"):
-        if file_path.is_file():
-            rel_path = file_path.relative_to(assets_root).as_posix()
-            mime, _ = mimetypes.guess_type(file_path.name)
-            results.append({
-                "name": file_path.name,
-                "path": rel_path,
-                "size": file_path.stat().st_size,
-                "mimeType": mime or "application/octet-stream",
-                "url": f"/api/decks/{deck_id}/assets/{rel_path}",
-            })
-    results.sort(key=lambda item: item["path"].lower())
-    return results
+def list_deck_assets(deck_id: int) -> list[dict]:
+    root = _asset_root(deck_id)
+    directory = _document_directory(deck_id)
+    results = []
+    for file_path in root.rglob("*"):
+        if _existing_media(file_path) and file_path.is_file():
+            path = file_path.relative_to(root).as_posix()
+            results.append(_describe_asset(deck_id, path, file_path.stat().st_size, directory))
+    return sorted(results, key=lambda item: item["path"].casefold())
 
 
 def delete_deck_asset(deck_id: int, relative_path: str) -> bool:
-    """Delete a deck asset file. Returns True if deleted."""
     file_path = get_deck_asset_path(deck_id, relative_path)
-    if file_path and file_path.is_file():
+    if not file_path:
+        return False
+    try:
         file_path.unlink()
-        return True
-    return False
+    except FileNotFoundError:
+        return False
+    return True
