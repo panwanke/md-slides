@@ -29,5 +29,10 @@ This project incorporates components from or depends upon open-source software:
    - License: MIT, with bundled notices in `src/md_slide_studio/providers/assets/pele/LICENSE`
    - Usage: Mermaid diagrams in the editor, the slide preview, and offline HTML exports.
 
+7. **WorkBuddy Cloud SDK**
+   - Source: [WorkBuddy Cloud SDK](https://www.npmjs.com/package/@tencent-ai/workbuddy-cloud-sdk)
+   - License: MIT License
+   - Usage: Authentication, cloud database, and storage in WorkBuddy cloud deployment mode.
+
 The workbench build includes the license texts of bundled runtime dependencies in
-`src/jc_slide_studio/web_dist/THIRD_PARTY_LICENSES.txt`.
+`src/md_slide_studio/web_dist/THIRD_PARTY_LICENSES.txt`.

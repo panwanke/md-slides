@@ -4,6 +4,7 @@ All notable changes to `jc-slide-studio` will be documented in this file.
 
 ## [Unreleased]
 
+- 登记 WorkBuddy 云服务集成调查结果：新增[调查报告](logic/report/2026-11-16-workbuddy-cloud-service-integration-report.md)与[云服务接入 Runbook](docs/ops/integrate-workbuddy-cloud-runbook.md)，决策 D006，ARA 路由/ops 已登记。复用 `wbapp_Y8YYMDc6ZZ7Nz6ksDsXHuG` 激活云服务，建 `decks` / `deck_revisions` + owner RLS，前端新增 `web/src/cloud/` 适配层；两类构建通过，**按用户要求暂不发布**（发布前仍有 Pyodide 运行时与 base 路径阻塞点）。
 - 移除腾讯云托管链路：删除 `deploy/cloudrun/` CloudBase Run 部署副本（含 `cloudbaserc.json`）、`cloudbase/migrations/` 建表迁移、`studio/pg_client.py` 与 `studio/service_pg.py` 两个 PG 后端实现，清理 `JC_STUDIO_BACKEND=cloudbase_pg` 分支与 `docs/ops/` 自建部署物料；服务端存储收敛为 SQLite，线上托管统一由 WorkBuddy 承载。
 
 - 恢复 jc-slides 出片前的逐字稿验收闸门：`check` 新增 `--strict`，把缺讲稿与字数越界（中文 100–400 字符 / 英文 80–320 words）升级为 error；`ok=false` 时返回退出码 1，供技能侧 `--check` 委托阻断出片。`layout=journal|section` 缺讲稿仍不阻断。
