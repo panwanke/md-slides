@@ -107,13 +107,15 @@ def test_local_workbench_opens_workspace_and_exports_offline(workbench, tmp_path
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1440, "height": 900})
-        page.add_init_script("delete window.showDirectoryPicker")
+        page.add_init_script("delete window.showDirectoryPicker; delete window.showOpenFilePicker")
         page.goto(url)
-        expect(page.locator("#fileNameDisplay")).to_have_text("steps.md")
         toolbar = page.get_by_role("banner")
+        tabs = page.get_by_role("tablist", name="打开的文件和文件夹")
+        expect(tabs.get_by_role("tab", name="steps.md")).to_have_attribute("aria-selected", "true")
+        file_menu = toolbar.get_by_role("button", name="文件", exact=True)
         open_folder = toolbar.get_by_role("button", name="打开工作文件夹")
-        expect(open_folder).to_be_visible()
-        assert open_folder.bounding_box()["x"] < page.locator("#fileNameDisplay").bounding_box()["x"]
+        expect(file_menu).to_be_visible()
+        expect(open_folder).to_be_hidden()
         present = toolbar.get_by_role("link", name="演示")
         assert toolbar.get_by_role("link", name="GitHub · Star").bounding_box()["x"] > present.bounding_box()["x"]
         assert toolbar.get_by_role("button", name="设置").bounding_box()["x"] > present.bounding_box()["x"]
@@ -133,10 +135,12 @@ def test_local_workbench_opens_workspace_and_exports_offline(workbench, tmp_path
         offline.keyboard.press("ArrowRight")
         expect(offline.get_by_role("heading", name="Offline slide two")).to_be_visible()
 
+        file_menu.click()
         with page.expect_file_chooser() as chooser:
             open_folder.click()
         chooser.value.set_files(folder)
-        expect(page.locator("#fileNameDisplay")).to_have_text("talk.md")
+        expect(tabs.get_by_role("tab", name="workspace")).to_have_attribute("aria-selected", "true")
+        expect(page.get_by_label("工作文件夹中的 Markdown")).to_have_value("decks/talk.md")
         frame = page.frame_locator("#previewFrame")
         assert frame.get_by_alt_text("Plot").evaluate("img => img.decode().then(() => img.naturalWidth)") == 24
         with page.expect_download() as downloaded:
@@ -144,13 +148,195 @@ def test_local_workbench_opens_workspace_and_exports_offline(workbench, tmp_path
         assert downloaded.value.suggested_filename == "talk.html"
         assert re.search(r'<img src="data:image/svg\+xml;base64,', downloaded.value.path().read_text(encoding="utf-8"))
 
+        file_menu.click()
         with page.expect_file_chooser() as chooser:
             toolbar.get_by_role("button", name="打开 Markdown").click()
         chooser.value.set_files({"name": "loose.md", "mimeType": "text/markdown", "buffer": b"# Loose draft"})
         expect(editor).to_contain_text("Loose draft")
-        toolbar.get_by_role("button", name="返回启动稿件").click()
-        expect(page.locator("#fileNameDisplay")).to_have_text("steps.md")
+        tabs.get_by_role("tab", name="steps.md").click()
+        expect(editor).to_contain_text("Export the current text")
         assert "Export the current text" in original.read_text(encoding="utf-8")
+
+
+def test_local_tabs_keep_unsaved_drafts_and_folder_context(workbench, tmp_path):
+    url, _ = workbench
+    first = tmp_path / "first" / "project"
+    second = tmp_path / "second" / "project"
+    for folder, heading, width in ((first, "First workspace", 12), (second, "Second workspace", 24)):
+        folder.mkdir(parents=True)
+        (folder / "intro.md").write_text(f"# {heading}\n\n![Plot](figure.svg)", encoding="utf-8")
+        (folder / "part.md").write_text("# Another deck", encoding="utf-8")
+        (folder / "figure.svg").write_text(
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="12"/>', encoding="utf-8",
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.add_init_script("delete window.showDirectoryPicker; delete window.showOpenFilePicker")
+        page.route("https://**/*", lambda route: route.abort())
+        page.goto(url)
+        tabs = page.get_by_role("tablist", name="打开的文件和文件夹")
+        editor = page.locator("#editor .cm-content")
+        frame = page.frame_locator("#previewFrame")
+        workspace_files = page.get_by_label("工作文件夹中的 Markdown")
+
+        tabs.get_by_role("tab", name="steps.md").click()
+        with page.expect_file_chooser() as chooser:
+            page.keyboard.press("Control+o")
+        chooser.value.set_files([
+            {"name": "one.md", "mimeType": "text/markdown", "buffer": b"# Local one"},
+            {"name": "two.md", "mimeType": "text/markdown", "buffer": b"# Local two"},
+        ])
+        tabs.get_by_role("tab", name="one.md").click()
+        expect(editor).to_contain_text("Local one")
+        editor.fill("# Unsaved local draft")
+        tabs.get_by_role("tab", name="one.md").press("ArrowRight")
+        expect(editor).to_contain_text("Local two")
+        expect(tabs.get_by_role("tab", name="two.md")).to_be_focused()
+        expect(page.get_by_role("status")).to_have_text("就绪 · 1 页")
+
+        for folder, width in ((first, 12), (second, 24)):
+            with page.expect_file_chooser() as chooser:
+                page.keyboard.press("Control+Alt+o")
+            chooser.value.set_files(folder)
+            expect(workspace_files).to_have_value("intro.md")
+            assert frame.get_by_alt_text("Plot").evaluate("img => img.decode().then(() => img.naturalWidth)") == width
+            if folder == first:
+                editor.fill("# Unsaved folder draft")
+                expect(editor).to_have_text("# Unsaved folder draft")
+                workspace_files.select_option("part.md")
+                expect(editor).to_contain_text("Another deck")
+
+        expect(tabs.get_by_role("tab")).to_have_count(5)
+        tabs.get_by_role("tab", name="project", exact=True).first.click()
+        expect(workspace_files).to_have_value("part.md")
+        workspace_files.select_option("intro.md")
+        expect(editor).to_have_text("# Unsaved folder draft")
+
+        page.once("dialog", lambda dialog: dialog.dismiss())
+        page.get_by_role("button", name="关闭 one.md").click()
+        tabs.get_by_role("tab", name="one.md").click()
+        expect(editor).to_have_text("# Unsaved local draft")
+        with page.expect_download() as download:
+            page.keyboard.press("Control+s")
+        assert download.value.path().read_text(encoding="utf-8") == "# Unsaved local draft"
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.get_by_role("button", name="关闭 one.md").click()
+        expect(tabs.get_by_role("tab", name="one.md")).to_have_count(0)
+        expect(tabs.get_by_role("tab", name="two.md")).to_have_attribute("aria-selected", "true")
+
+
+def test_recent_files_and_projects_reopen_after_reload(workbench):
+    url, _ = workbench
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route("https://**/*", lambda route: route.abort())
+        page.add_init_script("""(() => {
+          const directory = () => navigator.storage.getDirectory();
+          window.showOpenFilePicker = async () => [await (await directory()).getFileHandle('recent.md')];
+          window.showDirectoryPicker = async () => (await directory()).getDirectoryHandle('journal');
+        })()""")
+        page.goto(url)
+        page.evaluate("""async () => {
+          const root = await navigator.storage.getDirectory();
+          const folder = await root.getDirectoryHandle('journal', { create: true });
+          for (const [directory, name, text] of [
+            [root, 'recent.md', '# Loose Markdown'],
+            [folder, 'intro.md', '# Introduction'],
+            [folder, 'results.md', '# Results'],
+          ]) {
+            const file = await directory.getFileHandle(name, { create: true });
+            const writer = await file.createWritable();
+            await writer.write(text);
+            await writer.close();
+          }
+        }""")
+        file_menu = page.get_by_role("button", name="文件", exact=True)
+        editor = page.locator("#editor .cm-content")
+        tabs = page.get_by_role("tablist")
+        project_picker = page.get_by_label("工作文件夹中的 Markdown")
+
+        file_menu.click()
+        expect(page.get_by_role("button", name="最近 Markdown", exact=True)).to_be_visible()
+        page.get_by_role("button", name="打开 Markdown", exact=True).click()
+        expect(editor).to_contain_text("Loose Markdown")
+        file_menu.click()
+        page.get_by_role("button", name="打开工作文件夹", exact=True).click()
+        project_picker.select_option("results.md")
+        expect(editor).to_contain_text("Results")
+        file_menu.click()
+        page.get_by_role("button", name="最近 Markdown", exact=True).click()
+        expect(page.get_by_role("button", name="results.md journal")).to_be_visible()
+
+        page.reload()
+        page.evaluate("""async () => {
+          const root = await navigator.storage.getDirectory();
+          const file = await root.getFileHandle('recent.md');
+          const writer = await file.createWritable();
+          await writer.write('# Updated on disk');
+          await writer.close();
+        }""")
+        file_menu.click()
+        page.get_by_role("button", name="最近项目", exact=True).click()
+        page.get_by_role("button", name="journal", exact=True).click()
+        expect(project_picker).to_have_value("results.md")
+        expect(editor).to_contain_text("Results")
+        editor.fill("# Unsaved results")
+        file_menu.click()
+        page.get_by_role("button", name="最近 Markdown", exact=True).click()
+        page.get_by_role("button", name="recent.md", exact=True).click()
+        expect(editor).to_contain_text("Updated on disk")
+
+        file_menu.click()
+        page.get_by_role("button", name="最近 Markdown", exact=True).click()
+        page.get_by_role("button", name="results.md journal").click()
+        expect(editor).to_have_text("# Unsaved results")
+        expect(tabs.get_by_role("tab", name="journal", exact=True)).to_have_count(1)
+
+
+def test_recent_history_can_reselect_files_without_handles(workbench, tmp_path):
+    url, _ = workbench
+    folder = tmp_path / "recent-project"
+    folder.mkdir()
+    (folder / "intro.md").write_text("# Project Markdown", encoding="utf-8")
+    standalone = tmp_path / "recent-file.md"
+    standalone.write_text("# Standalone Markdown", encoding="utf-8")
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route("https://**/*", lambda route: route.abort())
+        page.add_init_script("delete window.showDirectoryPicker; delete window.showOpenFilePicker")
+        page.goto(url)
+        file_menu = page.get_by_role("button", name="文件", exact=True)
+        editor = page.locator("#editor .cm-content")
+
+        for label, path, title in (
+            ("打开工作文件夹", folder, "Project Markdown"),
+            ("打开 Markdown", standalone, "Standalone Markdown"),
+        ):
+            file_menu.click()
+            with page.expect_file_chooser() as chooser:
+                page.get_by_role("button", name=label, exact=True).click()
+            chooser.value.set_files(path)
+            expect(editor).to_contain_text(title)
+
+        page.reload()
+        file_menu.click()
+        page.get_by_role("button", name="最近项目", exact=True).click()
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name=folder.name, exact=True).click()
+        chooser.value.set_files(folder)
+        expect(editor).to_contain_text("Project Markdown")
+
+        file_menu.click()
+        page.get_by_role("button", name="最近 Markdown", exact=True).click()
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name=standalone.name, exact=True).click()
+        chooser.value.set_files(standalone)
+        expect(editor).to_contain_text("Standalone Markdown")
 
 
 def test_preview_paging_keeps_the_editor_cursor_and_restores_the_view(workbench, tmp_path):

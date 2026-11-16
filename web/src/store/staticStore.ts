@@ -19,8 +19,11 @@ export class StaticDeckStore implements DeckStore {
     };
   }
 
-  async save(content: string): Promise<SavedDeck> {
+  updateDraft(content: string) {
     this.content = content;
+  }
+
+  async save(content: string): Promise<SavedDeck> {
     return {
       revision: Date.now(),
       ast: await this.buildAst(content),

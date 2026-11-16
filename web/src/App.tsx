@@ -14,7 +14,7 @@ import type { DeckAsset } from './store/remote';
 import type { DeckStore } from './store/types';
 import { mediaFile } from './store/workspace';
 import { readWorkbenchView, writeWorkbenchView } from './store/workbenchView';
-import type { Pane } from './store/workbenchView';
+import type { Pane, WorkbenchView } from './store/workbenchView';
 import { shortcutText, useShortcut, useShortcuts } from './shortcuts';
 import ProjectControls from './ui/ProjectControls';
 import { downloadText } from './render/download';
@@ -39,13 +39,15 @@ export interface WorkbenchProps {
   previewSrcDoc?: string;
   standaloneHtml?: string;
   staticStatusText?: string;
-  workspaceSelect?: React.ReactNode;
+  tabBar?: React.ReactNode;
+  activeTabId?: string;
   fileActions?: React.ReactNode;
   headerActions?: React.ReactNode;
   onPresent?: (page: number) => void;
   onDocChange?: (content: string) => void;
   sessionRef?: MutableRefObject<EditorSession | undefined>;
   viewKey?: string;
+  viewState?: MutableRefObject<WorkbenchView | undefined>;
 }
 
 type Split = 'outline' | 'editor';
@@ -158,13 +160,15 @@ export default function App({
   previewSrcDoc,
   standaloneHtml,
   staticStatusText,
-  workspaceSelect,
+  tabBar,
+  activeTabId,
   fileActions,
   headerActions,
   onPresent,
   onDocChange,
   sessionRef,
   viewKey,
+  viewState,
 }: WorkbenchProps = {}) {
   const [file, setFile] = useState<{ source: string; fullPath: string; assetBase?: string }>();
   const [deck, setDeck] = useState<Deck>();
@@ -270,7 +274,7 @@ export default function App({
     const editor = new EditorSession(host.current!, {
       onLoad(doc) {
         slideCount.current = doc.ast.slides.length;
-        const previous = readWorkbenchView(viewKey ?? doc.fullPath);
+        const previous = viewState?.current ?? readWorkbenchView(viewKey ?? doc.fullPath);
         updatePreviewPage(previous?.page ?? 1);
         if (previous) {
           setMode(previous.mode);
@@ -484,10 +488,13 @@ export default function App({
   }, [split]);
 
   useEffect(() => {
-    if (file) writeWorkbenchView(viewKey ?? file.fullPath, {
+    if (!file) return;
+    const state = {
       page: activePage, mode, pane, selection: cursor.selection, closed: [...closed], stepped, step: step.current,
-    });
-  }, [file, viewKey, activePage, mode, pane, cursor.selection, closed, stepped, playerState?.step]);
+    };
+    if (viewState) viewState.current = state;
+    writeWorkbenchView(viewKey ?? file.fullPath, state);
+  }, [file, viewKey, viewState, activePage, mode, pane, cursor.selection, closed, stepped, playerState?.step]);
 
   function navigate(page: number) {
     navigatePreview(page);
@@ -605,14 +612,13 @@ export default function App({
 
   return (
     <div className="studio">
-      <header className={`app-bar${staticMode ? ' app-bar-static' : ''}`}>
+      <header className={`app-bar${tabBar ? ' app-bar-workspace' : ''}${staticMode ? ' app-bar-static' : ''}`}>
         <div className="brand"><span className="brand-mark"><Presentation size={19} strokeWidth={1.8} /></span>
           <span>Slide Studio</span></div>
         {fileActions}
-        <div className="open-file" title={file?.fullPath}><FileText size={16} />
+        {!tabBar && <div className="open-file" title={file?.fullPath}><FileText size={16} />
           <span id="fileNameDisplay">{file?.source ?? (status === 'load-error' ? '未加载文件' : '正在打开稿件…')}</span>
-        </div>
-        {workspaceSelect}
+        </div>}
         <div className="document-actions">
           {headerActions}
           {onExit && <button type="button" className="button" onClick={onExit} title="返回幻灯片库">
@@ -644,7 +650,8 @@ export default function App({
             <Download size={16} /><span>{exporting ? '正在导出…' : '导出 HTML'}</span>
           </button>
           {onPresent ? (
-            <button type="button" className="button present-button" onClick={() => onPresent(activePage)} title="全屏演示当前幻灯片">
+            <button type="button" className="button present-button" disabled={!standaloneHtml}
+              onClick={() => onPresent(activePage)} title="全屏演示当前幻灯片">
               <Monitor size={16} /><span>演示</span><ArrowUpRight className="external-icon" size={13} />
             </button>
           ) : (
@@ -655,6 +662,7 @@ export default function App({
         </div>
         <ProjectControls />
       </header>
+      {tabBar}
       {exportError && <p className="export-error" role="alert">导出失败：{exportError}</p>}
 
       <nav className="mobile-panes" aria-label="工作区">
@@ -665,7 +673,8 @@ export default function App({
           </button>)}
       </nav>
 
-      <main className="workbench" id="workbench" data-pane={pane} style={gridStyle} ref={workbench}>
+      <main className="workbench" id="workbench" data-pane={pane} style={gridStyle} ref={workbench}
+        role={activeTabId ? 'tabpanel' : undefined} aria-labelledby={activeTabId}>
         <aside className="outline-pane" id="sidebar" ref={outline} aria-label="幻灯片大纲">
           <div className="pane-bar outline-bar">
             <h2><List size={17} /> 大纲</h2>

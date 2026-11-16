@@ -37,9 +37,9 @@ function imageData(file: File, mime: string): Promise<string> {
 }
 
 export async function embedWorkspaceImages(html: string, workspace?: Pick<Workspace, 'read'>, documentPath = '') {
-  // The renderer escapes image attributes and always emits src first.
-  const imageSource = /<img src="([^"]+)"/g;
-  const sources = new Set(Array.from(html.matchAll(imageSource), (match) => match[1]));
+  // The renderer emits src first. Skip inline scripts, which can contain image markup as strings.
+  const imageSource = /<script\b[^>]*>[\s\S]*?<\/script\s*>|<img src="([^"]+)"/gi;
+  const sources = new Set(Array.from(html.matchAll(imageSource), (match) => match[1]).filter(Boolean));
   const attribute = document.createElement('textarea');
   const replacements = new Map<string, string>();
   const assets = new Map<string, Promise<string | undefined>>();

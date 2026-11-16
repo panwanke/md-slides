@@ -29,6 +29,7 @@ export default function Shell() {
   if (isCloudRuntime()) return <CloudApp />;
 
   const [mode, setMode] = useState<Mode>('checking');
+  const [boundPath, setBoundPath] = useState('');
   const [user, setUser] = useState<StudioUser | null>(null);
   const [hash, setHash] = useState(() => location.hash);
 
@@ -50,8 +51,11 @@ export default function Shell() {
     (async () => {
       try {
         const doctor = await fetch('/api/doctor').then((response) => response.json());
-        if (doctor.source) {
-          if (!disposed) setMode('local');
+        if (typeof doctor.source === 'string' && doctor.source) {
+          if (!disposed) {
+            setBoundPath(doctor.source);
+            setMode('local');
+          }
           return;
         }
       } catch { /* no local file bound -> library mode */ }
@@ -89,7 +93,7 @@ export default function Shell() {
   }
 
   if (mode === 'checking') return <div className="boot-screen">正在检查运行模式…</div>;
-  if (mode === 'local') return <WorkspaceStudio bound />;
+  if (mode === 'local') return <WorkspaceStudio boundPath={boundPath} />;
   if (!user) return <Login onSignedIn={signedIn} />;
 
   if (deckId !== null && store) {

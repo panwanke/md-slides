@@ -86,6 +86,7 @@ def test_static_studio_renders_in_browser(tmp_path):
             page = browser.new_page()
             page_errors = []
             page.on("pageerror", lambda error: page_errors.append(str(error)))
+            page.add_init_script("delete window.showOpenFilePicker")
             page.goto(f"http://127.0.0.1:{port}/studio.html")
             page.wait_for_function(
                 "document.body.innerText.includes('就绪')",
@@ -98,7 +99,11 @@ def test_static_studio_renders_in_browser(tmp_path):
             assert active_slide.evaluate("(slide) => (slide.ownerDocument.defaultView.MDDeck || slide.ownerDocument.defaultView.JCDeck).goTo(2).page") == 2
 
             editor = page.locator(".studio-editor .cm-content")
+            file_menu = page.get_by_role("button", name="文件", exact=True)
             open_markdown = page.get_by_role("button", name="打开 Markdown")
+            open_folder = page.get_by_role("button", name="打开工作文件夹")
+            tabs = page.get_by_role("tablist", name="打开的文件和文件夹")
+            file_menu.click()
             for title, open_file in (
                 ("First local draft", open_markdown.click),
                 ("Second local draft", lambda: page.keyboard.press("Control+o")),
@@ -126,8 +131,9 @@ def test_static_studio_renders_in_browser(tmp_path):
             )
             (workspace / "intro.md").write_text("# Intro\n", encoding="utf-8")
             page.evaluate("delete window.showDirectoryPicker")
+            file_menu.click()
             with page.expect_file_chooser() as chooser:
-                page.get_by_role("button", name="打开工作文件夹").click(timeout=5_000)
+                open_folder.click(timeout=5_000)
             chooser.value.set_files(workspace)
             page.get_by_label("工作文件夹中的 Markdown").select_option("talks/talk.md")
             for alt in ("Local", "Shared"):
@@ -141,21 +147,19 @@ def test_static_studio_renders_in_browser(tmp_path):
             assert downloaded.value.path().read_text(encoding="utf-8").count("data:image/svg+xml;base64,") >= 2
 
             editor.fill("# Keep this edit")
-            page.once("dialog", lambda dialog: dialog.dismiss())
-            page.get_by_label("工作文件夹中的 Markdown").select_option("intro.md")
-            assert page.get_by_label("工作文件夹中的 Markdown").input_value() == "talks/talk.md"
-            assert editor.inner_text() == "# Keep this edit"
-            page.once("dialog", lambda dialog: dialog.accept())
             page.get_by_label("工作文件夹中的 Markdown").select_option("intro.md")
             frame.get_by_role("heading", name="Intro").wait_for(timeout=5_000)
+            page.get_by_label("工作文件夹中的 Markdown").select_option("talks/talk.md")
+            editor.get_by_text("Keep this edit", exact=True).wait_for()
 
             # A separate workspace can contain the same relative document and image paths.
             other = tmp_path / "other"
             other.mkdir()
             (other / "intro.md").write_text("# Other folder\n\n![Other](figure.svg)", encoding="utf-8")
             (other / "figure.svg").write_text(image.replace('width="8"', 'width="12"'), encoding="utf-8")
+            file_menu.click()
             with page.expect_file_chooser() as chooser:
-                page.get_by_role("button", name="打开工作文件夹").click()
+                open_folder.click()
             chooser.value.set_files(other)
             editor.get_by_text("Other folder", exact=True).wait_for(timeout=5_000)
             assert frame.get_by_alt_text("Other").evaluate("(img) => img.decode().then(() => img.naturalWidth)") == 12
@@ -163,8 +167,9 @@ def test_static_studio_renders_in_browser(tmp_path):
             no_decks = tmp_path / "no-markdown"
             no_decks.mkdir()
             (no_decks / "figure.svg").write_text(image, encoding="utf-8")
+            file_menu.click()
             with page.expect_file_chooser() as chooser:
-                page.get_by_role("button", name="打开工作文件夹").click()
+                open_folder.click()
             chooser.value.set_files(no_decks)
             page.get_by_role("status").get_by_text("工作文件夹内没有 Markdown 文件", exact=True).wait_for()
             assert editor.get_by_text("Other folder", exact=True).is_visible()
@@ -178,10 +183,12 @@ def test_static_studio_renders_in_browser(tmp_path):
               await writer.close();
               window.showDirectoryPicker = async () => root;
             }""")
-            page.get_by_role("button", name="打开工作文件夹").click()
+            file_menu.click()
+            open_folder.click()
             page.get_by_label("工作文件夹中的 Markdown").locator('option[value="writable.md"]').wait_for(state="attached")
+            editor.get_by_text("Before", exact=True).wait_for()
             editor.fill("# Saved locally")
-            unsaved = page.get_by_text("未保存", exact=True)
+            unsaved = tabs.locator('[data-active="true"] .workspace-tab-dirty')
             unsaved.wait_for()
             page.get_by_role("button", name="保存到本地").click()
             unsaved.wait_for(state="hidden")
@@ -219,7 +226,7 @@ def test_workspace_toolbar_and_custom_shortcuts(tmp_path):
                 page.goto(url)
                 toolbar = page.get_by_role("banner")
                 for control in (
-                    toolbar.get_by_role("button", name="打开工作文件夹"),
+                    toolbar.get_by_role("button", name="文件", exact=True),
                     toolbar.get_by_role("link", name="GitHub · Star"),
                     toolbar.get_by_role("button", name="设置"),
                 ):
@@ -238,6 +245,7 @@ def test_workspace_toolbar_and_custom_shortcuts(tmp_path):
                 expect(workspace_key).to_contain_text("J")
                 settings.get_by_role("button", name="完成").click()
                 page.goto(f"{url}/studio/")
+                page.get_by_role("tab", name="sample.md").click()
 
                 workspace = tmp_path / "workspace"
                 workspace.mkdir()
@@ -245,7 +253,8 @@ def test_workspace_toolbar_and_custom_shortcuts(tmp_path):
                 with page.expect_file_chooser() as chooser:
                     page.keyboard.press("Control+Alt+j")
                 chooser.value.set_files(workspace)
-                expect(page.locator("#fileNameDisplay")).to_have_text("shortcut.md")
+                expect(page.get_by_role("tab", name="workspace")).to_have_attribute("aria-selected", "true")
+                expect(page.get_by_label("工作文件夹中的 Markdown")).to_have_value("shortcut.md")
                 with page.expect_download() as download:
                     page.keyboard.press("Control+s")
                 assert download.value.suggested_filename == "shortcut.md"

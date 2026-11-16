@@ -33,7 +33,11 @@ Key views and workflows include:
 
 ### GitHub Pages workspace
 
-In the online editor, choose **Open Markdown** (打开 Markdown) or press `Ctrl/⌘ + O` to edit one local file. For a deck that uses local images, choose **Open workspace folder** (打开工作文件夹), select a folder containing the Markdown and images, then use the dropdown to switch between decks. Image paths are relative to each Markdown file, including parent directories within the selected folder. Use angle brackets around paths with spaces, as in `![Figure](<../figures/Figure 1.png>)`.
+In the online editor, choose **File → Open Markdown** (文件 → 打开 Markdown) or press `Ctrl/⌘ + O` to open one or more local files. Choose **File → Open workspace folder** (文件 → 打开工作文件夹) to open a folder with Markdown and images. Each file or folder opens in its own tab. Use the dropdown beside the tabs to choose a deck within a folder. Switching tabs or decks keeps your edits in the current session.
+
+The **File** menu also lists recent Markdown files and projects. Reopening a project returns to its last active deck. Depending on browser permissions, you may need to grant access again or reselect the original file or folder.
+
+Image paths are relative to each Markdown file, including parent directories within the selected folder. Use angle brackets around paths with spaces, as in `![Figure](<../figures/Figure 1.png>)`.
 
 HTML export embeds the local images. When your browser grants write access, **Save locally** (保存到本地) writes changes to the original Markdown file. The read-only directory picker supports **Export .md**.
 

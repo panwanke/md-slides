@@ -2,7 +2,7 @@ import type { EditorSelection, Mode } from '../editorSession';
 
 export type Pane = 'outline' | 'editor' | 'preview';
 
-interface ViewState {
+export interface WorkbenchView {
   page: number;
   mode: Mode;
   pane: Pane;
@@ -14,11 +14,11 @@ interface ViewState {
 
 const keyPrefix = 'md-slide-studio-view:';
 
-export function readWorkbenchView(key: string): ViewState | undefined {
+export function readWorkbenchView(key: string): WorkbenchView | undefined {
   try {
     const raw = localStorage.getItem(keyPrefix + key);
     if (!raw) return;
-    const value = JSON.parse(raw) as Partial<ViewState>;
+    const value = JSON.parse(raw) as Partial<WorkbenchView>;
     const selection = value.selection;
     return {
       page: Number.isSafeInteger(value.page) ? value.page! : 1,
@@ -32,7 +32,7 @@ export function readWorkbenchView(key: string): ViewState | undefined {
   } catch { /* Invalid or unavailable browser storage. */ }
 }
 
-export function writeWorkbenchView(key: string, state: ViewState) {
+export function writeWorkbenchView(key: string, state: WorkbenchView) {
   try {
     localStorage.setItem(keyPrefix + key, JSON.stringify(state));
   } catch { /* Continue without browser storage. */ }

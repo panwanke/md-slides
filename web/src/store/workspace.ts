@@ -6,11 +6,11 @@ export function folderPath(file: File) {
   return path ? path.slice(path.indexOf('/') + 1) : file.name;
 }
 
-interface DirectoryHandle extends FileSystemDirectoryHandle {
-  values(): AsyncIterable<FileSystemFileHandle | DirectoryHandle>;
+export interface WorkspaceDirectoryHandle extends FileSystemDirectoryHandle {
+  values(): AsyncIterable<FileSystemFileHandle | WorkspaceDirectoryHandle>;
 }
 
-export type DirectoryPicker = (options: { mode: 'readwrite' }) => Promise<DirectoryHandle>;
+export type DirectoryPicker = (options: { mode: 'readwrite' }) => Promise<WorkspaceDirectoryHandle>;
 
 export interface Workspace {
   name: string;
@@ -28,10 +28,10 @@ export function workspaceFromFiles(files: FileList): Workspace {
   };
 }
 
-export async function workspaceFromDirectory(root: DirectoryHandle): Promise<Workspace> {
+export async function workspaceFromDirectory(root: WorkspaceDirectoryHandle): Promise<Workspace> {
   const documents = new Map<string, FileSystemFileHandle>();
 
-  async function scan(directory: DirectoryHandle, prefix: string) {
+  async function scan(directory: WorkspaceDirectoryHandle, prefix: string) {
     for await (const entry of directory.values()) {
       const path = prefix + entry.name;
       if (entry.kind === 'directory') {
