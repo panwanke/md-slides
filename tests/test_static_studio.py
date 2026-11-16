@@ -103,6 +103,11 @@ def test_static_studio_renders_in_browser(tmp_path):
             open_markdown = page.get_by_role("button", name="打开 Markdown")
             open_folder = page.get_by_role("button", name="打开工作文件夹")
             tabs = page.get_by_role("tablist", name="打开的文件和文件夹")
+            # GitHub static build: sample.md is closable and there is no "导出 .md" button.
+            assert page.get_by_role("button", name="关闭 sample.md").count() == 1
+            assert page.get_by_role("button", name="导出 .md").count() == 0
+            page.get_by_role("button", name="关闭 sample.md").click()
+            page.get_by_text("还没有打开的稿件").wait_for()
             file_menu.click()
             for title, open_file in (
                 ("First local draft", open_markdown.click),
@@ -140,7 +145,19 @@ def test_static_studio_renders_in_browser(tmp_path):
                 image_locator = frame.get_by_alt_text(alt)
                 image_locator.wait_for()
                 assert image_locator.evaluate("(img) => img.decode().then(() => img.naturalWidth)") == 8
-            assert "images/missing.png" in page.locator(".studio-status").inner_text()
+            badge = page.locator(".missing-assets")
+            badge.wait_for()
+            popover = badge.locator(".missing-assets-popover")
+            assert not popover.is_visible()  # hidden until hover/pin
+            badge.hover()
+            assert "images/missing.png" in popover.inner_text()
+            badge.locator(".missing-assets-trigger").click()  # pin: stays open after pointer leaves
+            page.mouse.move(0, 0)
+            assert popover.is_visible()
+            badge.locator(".missing-assets-trigger").click()  # unpin
+            page.mouse.move(0, 0)
+            assert "就绪 ·" in page.locator(".studio-status").inner_text()
+            assert "images/missing.png" not in page.locator(".studio-status").inner_text()
             with page.expect_download() as downloaded:
                 page.get_by_role("button", name="导出 HTML").click()
             assert downloaded.value.suggested_filename == "talk.html"

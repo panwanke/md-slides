@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Save } from 'lucide-react';
+import { FolderOpen, Presentation, Save } from 'lucide-react';
 import Workbench from '../App';
 import type { EditorSession } from '../editorSession';
 import { buildAst, listThemes, renderMarkdown } from '../render/pyodideEngine';
@@ -134,10 +134,10 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   const focusTab = useRef(false);
   const session = useRef<EditorSession>();
   const nextId = useRef(1);
-  const tab = tabs.find((item) => item.id === activeId)!;
-  const opened = tab.documents.find((document) => document.path === tab.path);
+  const tab = tabs.find((item) => item.id === activeId);
+  const opened = tab?.documents.find((document) => document.path === tab.path);
   const { id: documentId, path = '', content = '', theme = '' } = opened ?? {};
-  const workspace = tab.workspace;
+  const workspace = tab?.workspace;
   const dirty = Boolean(opened && isDirty(opened));
   const hasUnsavedTabs = tabs.some((item) => item.documents.some(isDirty));
   const preview = rendered?.documentId === documentId ? rendered : undefined;
@@ -227,15 +227,16 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   }
 
   function closeTab(id: number) {
-    if (id === 0 || fileAction.current) return;
+    if (fileAction.current) return;
     const index = tabs.findIndex((item) => item.id === id);
     const closing = tabs[index];
+    if (!closing) return;
     if (closing.documents.some(isDirty)
         && !window.confirm(`「${closing.label}」有未保存的修改。是否放弃修改并关闭标签？`)) return;
     setTabs((current) => current.filter((item) => item.id !== id));
     if (id === activeId) {
       focusTab.current = true;
-      setActiveId((tabs[index + 1] ?? tabs[index - 1]).id);
+      setActiveId(tabs[index + 1]?.id ?? tabs[index - 1]?.id ?? -1);
       setFileError('');
     }
   }
@@ -384,7 +385,7 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   }
 
   function selectDocument(nextPath: string) {
-    if (!workspace || fileAction.current || nextPath === path) return;
+    if (!tab || !workspace || fileAction.current || nextPath === path) return;
     void handleFileAction(() => showProjectDocument(tab, nextPath));
   }
 
@@ -430,6 +431,7 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   }
 
   function updateDocument(changes: Partial<Pick<DraftDocument, 'content' | 'savedContent' | 'theme'>>) {
+    if (!tab) return;
     setTabs((current) => current.map((item) => item.id === tab.id ? {
       ...item,
       documents: item.documents.map((document) => document.id === documentId ? { ...document, ...changes } : document),
@@ -450,14 +452,39 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
     downloadText(filename, session.current?.documentText() ?? content, 'text/markdown;charset=utf-8');
   }
 
+  const fileActions = (
+    <FileMenu busy={fileBusy} onMarkdown={chooseMarkdown} onWorkspace={chooseWorkspace}
+      history={history} onRecent={openRecent}>
+      <input ref={fileInput} type="file" accept=".md,.markdown,.txt" multiple hidden
+        onChange={(event) => openMarkdown(event.currentTarget.files)} />
+      <input ref={folderInput} type="file" {...{ webkitdirectory: '' }} hidden
+        onChange={(event) => importWorkspace(event.currentTarget.files)} />
+    </FileMenu>
+  );
+
+  if (!tab) {
+    return (
+      <div className="studio studio-empty">
+        <header className={`app-bar${bound ? '' : ' app-bar-static'}`}>
+          <div className="brand"><span className="brand-mark"><Presentation size={19} strokeWidth={1.8} /></span>
+            <span>Slide Studio</span></div>
+          {fileActions}
+        </header>
+        <div className="workspace-empty">
+          <FolderOpen size={30} strokeWidth={1.4} />
+          <p>还没有打开的稿件</p>
+          <span>用「文件」菜单打开 Markdown 或工作文件夹，或按 Ctrl/⌘ + O</span>
+        </div>
+      </div>
+    );
+  }
+
   let statusText = '渲染中…';
   if (fileBusy) statusText = '正在处理本地文件…';
   else if (fileError) statusText = fileError;
   else if (renderError) statusText = `渲染失败：${renderError}`;
   else if (currentRender) {
-    statusText = preview.missing.length
-      ? `就绪 · 缺少 ${preview.missing.length} 张图片 (${preview.missing.join(', ')})`
-      : `就绪 · ${preview.slideCount} 页`;
+    statusText = `就绪 · ${preview.slideCount} 页`;
   }
 
   return (
@@ -475,12 +502,13 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
       previewSrcDoc={preview?.previewHtml}
       standaloneHtml={currentRender ? preview.html : undefined}
       staticStatusText={opened || fileError || fileBusy ? statusText : undefined}
+      missingAssets={currentRender && preview.missing.length ? preview.missing : undefined}
       activeTabId={`workspace-tab-${activeId}`}
       tabBar={
         <div className="workspace-bar">
           <WorkspaceTabs tabs={tabs.map((item) => ({
             id: item.id, label: item.label, hint: item.hint, folder: Boolean(item.workspace),
-            dirty: item.documents.some(isDirty), closable: item.id !== 0,
+            dirty: item.documents.some(isDirty), closable: !bound || item.id !== 0,
           }))} activeId={activeId} busy={fileBusy} focusTab={focusTab} onSelect={selectTab} onClose={closeTab} />
           {workspace && (
             <div className="workspace-files">
@@ -497,15 +525,7 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
           )}
         </div>
       }
-      fileActions={
-        <FileMenu busy={fileBusy} onMarkdown={chooseMarkdown} onWorkspace={chooseWorkspace}
-          history={history} onRecent={openRecent}>
-          <input ref={fileInput} type="file" accept=".md,.markdown,.txt" multiple hidden
-            onChange={(event) => openMarkdown(event.currentTarget.files)} />
-          <input ref={folderInput} type="file" {...{ webkitdirectory: '' }} hidden
-            onChange={(event) => importWorkspace(event.currentTarget.files)} />
-        </FileMenu>
-      }
+      fileActions={fileActions}
       headerActions={opened && (
         <>
           {workspace?.save && (
@@ -514,9 +534,11 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
               <Save size={15} /><span>保存到本地</span>
             </button>
           )}
-          <button type="button" className="button" onClick={exportMarkdown} title="导出 Markdown 源码文件">
-            <span>导出 .md</span>
-          </button>
+          {bound && (
+            <button type="button" className="button" onClick={exportMarkdown} title="导出 Markdown 源码文件">
+              <span>导出 .md</span>
+            </button>
+          )}
           {themes.length > 0 && (
             <select aria-label="主题" value={theme} className="button theme-select" title="切换全局演示主题"
               onChange={(event) => updateDocument({ theme: event.target.value })}>

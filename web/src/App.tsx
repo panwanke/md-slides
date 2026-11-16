@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, MutableRefObject, PointerEvent } from 'react';
 import { flushSync } from 'react-dom';
 import {
-  ArrowUpRight, Check, ChevronsUpDown, ChevronDown, ChevronLeft, ChevronRight, Code2, Columns,
+  AlertCircle, ArrowUpRight, Check, ChevronsUpDown, ChevronDown, ChevronLeft, ChevronRight, Code2, Columns,
   Copy, Download, FileText, Film, FolderUp, Image as ImageIcon, List, Monitor, PanelTop, Plus, Presentation, Save,
   StickyNote, Trash2, Upload, X,
 } from 'lucide-react';
@@ -42,6 +42,8 @@ export interface WorkbenchProps {
   /** Async builder for a fully self-contained HTML file (cloud assets inlined). */
   renderStandalone?: () => Promise<string>;
   staticStatusText?: string;
+  /** Missing local image paths, shown as a corner badge over the preview slide. */
+  missingAssets?: string[];
   tabBar?: React.ReactNode;
   activeTabId?: string;
   fileActions?: React.ReactNode;
@@ -116,6 +118,41 @@ function previewClick(target: Element | null): PreviewClick | undefined {
   }
 }
 
+function MissingAssetsBadge({ paths }: { paths: string[] }) {
+  const [pinned, setPinned] = useState(false);
+  const host = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pinned) return;
+    function dismiss(event: globalThis.PointerEvent) {
+      if (event.target instanceof Node && !host.current?.contains(event.target)) setPinned(false);
+    }
+    function escape(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') setPinned(false);
+    }
+    window.addEventListener('pointerdown', dismiss);
+    window.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('pointerdown', dismiss);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [pinned]);
+
+  return (
+    <div ref={host} className={`missing-assets${pinned ? ' is-pinned' : ''}`}>
+      <button type="button" className="missing-assets-trigger" aria-label={`缺少 ${paths.length} 张图片`}
+        aria-expanded={pinned} title="悬停查看，点击固定"
+        onClick={() => setPinned((value) => !value)}>
+        <AlertCircle size={13} /><span>!</span>
+      </button>
+      <div className="missing-assets-popover" role="status">
+        <strong>缺少 {paths.length} 张图片</strong>
+        <ul>{paths.map((path) => <li key={path}>{path}</li>)}</ul>
+      </div>
+    </div>
+  );
+}
+
 function stopSlideArrows(event: globalThis.KeyboardEvent) {
   // Leave arrow navigation to the surrounding workbench while this deck is embedded.
   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') event.stopImmediatePropagation();
@@ -188,6 +225,7 @@ export default function App({
   standaloneHtml,
   renderStandalone,
   staticStatusText,
+  missingAssets,
   tabBar,
   activeTabId,
   fileActions,
@@ -840,6 +878,7 @@ export default function App({
                     onLoad={onPreviewLoad}
                     style={{ transform: `scale(${scale})` }}
                   />
+                  {missingAssets && missingAssets.length > 0 && <MissingAssetsBadge paths={missingAssets} />}
                 </div>
                 {selected && <p className="preview-caption" title={slideTitle(selected, deck!)}>{slideTitle(selected, deck!)}</p>}
               </div>}
