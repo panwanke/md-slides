@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, MutableRefObject, ReactNode } from 'react';
-import { ChevronDown, ChevronRight, FileText, FolderOpen, History, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileText, FolderOpen, History, Sparkles, X } from 'lucide-react';
 import { shortcutText, useShortcuts } from '../shortcuts';
 import type { RecentHistory, RecentVisit } from '../store/recent';
 
-export function FileMenu({ busy, children, onMarkdown, onWorkspace, history, onRecent }: {
+export function FileMenu({ busy, children, onMarkdown, onWorkspace, onShowcase, history, onRecent }: {
   busy: boolean;
   children: ReactNode;
   onMarkdown: () => void;
   onWorkspace: () => void;
+  onShowcase: () => void;
   history: RecentHistory;
   onRecent: (visit: RecentVisit, project: boolean) => void;
 }) {
@@ -54,7 +55,7 @@ export function FileMenu({ busy, children, onMarkdown, onWorkspace, history, onR
         aria-controls="workspace-file-menu" onClick={() => open ? close() : setOpen(true)}>
         文件 <ChevronDown size={13} aria-hidden="true" />
       </button>
-      <div id="workspace-file-menu" className="file-menu-popover" role="group" aria-label="打开本地文件" hidden={!open}>
+      <div id="workspace-file-menu" className="file-menu-popover" role="group" aria-label="打开文件" hidden={!open}>
         <button type="button" disabled={busy} onClick={() => choose(onMarkdown)}>
           <FileText size={16} aria-hidden="true" /><span>打开 Markdown</span>
           <kbd aria-hidden="true">{shortcutText(shortcuts.openMarkdown)}</kbd>
@@ -62,6 +63,9 @@ export function FileMenu({ busy, children, onMarkdown, onWorkspace, history, onR
         <button type="button" disabled={busy} onClick={() => choose(onWorkspace)}>
           <FolderOpen size={16} aria-hidden="true" /><span>打开工作文件夹</span>
           <kbd aria-hidden="true">{shortcutText(shortcuts.openWorkspace)}</kbd>
+        </button>
+        <button type="button" disabled={busy} onClick={() => choose(onShowcase)}>
+          <Sparkles size={16} aria-hidden="true" /><span>打开 showcase.md</span>
         </button>
         <div className="file-menu-divider" />
         {([

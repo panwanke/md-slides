@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, searchForWorkspaceRoot } from 'vite';
 import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -51,6 +51,7 @@ export default defineConfig(({ command }) => ({
   },
   server: {
     port: 3000,
+    fs: { allow: [searchForWorkspaceRoot(__dirname), path.resolve(__dirname, '../demo/showcase.md')] },
     proxy: {
       '/api': 'http://127.0.0.1:8000',
       '/ws': {

@@ -1,5 +1,7 @@
 """Account, deck store, versioning and isolation tests (library mode)."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -179,6 +181,10 @@ def test_templates_api(client):
     keys = [t["id"] for t in templates]
     assert "academic" in keys
     assert "showcase" in keys
+    showcase = (Path(__file__).resolve().parents[1] / "demo/showcase.md").read_text(encoding="utf-8")
+    assert next(item for item in templates if item["id"] == "showcase")["content"] == showcase
+    starter = client.get("/api/decks").json()["decks"][0]
+    assert client.get(f"/api/decks/{starter['id']}").json()["content"] == showcase
 
     res = client.post("/api/decks", json={"title": "学术汇报", "template": "academic"})
     assert res.status_code == 201

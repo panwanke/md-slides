@@ -53,6 +53,7 @@ def test_signup_library_edit_and_reload(library_server):
 
         expect(page.locator(".library")).to_be_visible()
         expect(page.locator(".deck-card")).to_have_count(1)
+        expect(page.get_by_role("button", name="打开 showcase.md 副本")).to_be_visible()
         page.get_by_role("button", name="新建演示稿").first.click()
         expect(page.locator(".dialog-panel")).to_be_visible()
         page.locator('.template-card[data-template="blank"]').click()
@@ -81,6 +82,10 @@ def test_signup_library_edit_and_reload(library_server):
         expect(page.locator(".deck-card")).to_have_count(2)
         expect(page.locator(".deck-card").filter(has_text="E2E 稿件").locator(".deck-card-meta")).to_contain_text("v2")
 
+        page.get_by_role("button", name="打开 showcase.md 副本").click()
+        expect(page.locator("#fileNameDisplay")).to_have_text("Markdown ⇄ HTML 演示全景")
+        expect(page.locator("#slide-item-2")).to_contain_text("目录导航")
+
         assert not errors
         browser.close()
 
@@ -105,9 +110,13 @@ def test_single_markdown_import_opens_the_editor(library_server):
         with page.expect_file_chooser() as chooser:
             page.keyboard.press("Control+Alt+m")
         chooser.value.set_files({
-            "name": "draft.md", "mimeType": "text/markdown", "buffer": b"# Imported draft",
+            "name": "draft.md", "mimeType": "text/markdown",
+            "buffer": b"Preamble\r\n<!-- slides:start -->\r\n# Imported draft\r\n---\r\n# Second page",
         })
         expect(page.locator("#editor .cm-content")).to_contain_text("Imported draft")
+        expect(page.locator("#slide-item-1")).to_contain_text("Imported draft")
+        page.locator("#slide-item-2").drag_to(page.locator("#slide-item-1"), target_position={"x": 30, "y": 5})
+        expect(page.locator("#slide-item-1")).to_contain_text("Second page")
 
 
 def test_empty_state_create_rename_and_delete(library_server):

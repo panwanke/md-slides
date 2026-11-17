@@ -15,48 +15,7 @@ import { markdownFile, workspaceFromDirectory, workspaceFromFiles } from '../sto
 import type { DirectoryPicker, Workspace, WorkspaceDirectoryHandle } from '../store/workspace';
 import { shortcutText, useShortcut, useShortcuts } from '../shortcuts';
 import { FileMenu, WorkspaceTabs } from './WorkspaceNavigation';
-
-const SAMPLE = `---
-md_slide:
-  title: 我的第一份演示稿
-  theme: academic-paper
-  lang: zh
----
-
-# 在浏览器里写幻灯片
-
-无需安装、无需登录，Markdown 直接变成演示稿。
-
----
-
-## 支持什么
-
-- 同一套 Python 渲染引擎，和本地 CLI 输出一致
-- 主题切换、分节导航、演讲者备注
-- 打开本地工作文件夹，预览 Markdown 引用的图片
-
----
-
-## 结构图表与公式
-
-内置 Pele 图表引擎与 KaTeX，直接书写流程图与数学公式：
-
-\`\`\`mermaid
-flowchart LR
-    A[Markdown 书写] --> B[实时交互预览]
-    B --> C[单文件脱网导出]
-\`\`\`
-
----
-
-## 数据去哪了
-
-文件在浏览器内读取。编辑后请保存到本地或导出。
-
-::: notes
-真正的多人使用与云端保存，请用自建服务版本。
-:::
-`;
+import { showcase } from '../showcase';
 
 interface DraftDocument {
   id: number;
@@ -71,6 +30,7 @@ interface DraftDocument {
 
 interface StudioTab {
   id: number;
+  showcase?: boolean;
   label: string;
   hint?: string;
   source?: RecentSource;
@@ -104,15 +64,19 @@ function draft(id: number, path: string, text: string, parse: typeof buildAst,
 
 const isDirty = (document: DraftDocument) => document.content !== document.savedContent;
 
+function showcaseTab(id: number, parse: typeof buildAst): StudioTab {
+  return {
+    id, showcase: true, label: showcase.filename, path: showcase.filename,
+    documents: [draft(id, showcase.filename, showcase.content, parse)],
+  };
+}
+
 function initialTab(boundPath?: string): StudioTab {
   if (boundPath) {
     const label = boundPath.split(/[/\\]/).pop() || boundPath;
     return { id: 0, label, hint: boundPath, path: '', documents: [] };
   }
-  return {
-    id: 0, label: 'sample.md', path: 'sample.md',
-    documents: [draft(0, 'sample.md', SAMPLE, buildAst)],
-  };
+  return showcaseTab(0, buildAst);
 }
 
 export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
@@ -329,6 +293,12 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
     remember(next.flatMap((item) => item.source ? [{ source: item.source, path: item.path }] : []));
   }
 
+  function openShowcase() {
+    const existing = tabs.find((item) => item.showcase);
+    if (existing) selectTab(existing.id, true);
+    else void handleFileAction(() => addTabs([showcaseTab(nextId.current++, parse)]));
+  }
+
   async function knownSources() {
     const { markdown, projects } = await getHistory();
     return [
@@ -471,6 +441,11 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
 
   function openRecent(visit: RecentVisit, project: boolean) {
     if (fileAction.current) return;
+    if (!visit.source.handle) {
+      if (visit.source.kind === 'project') chooseWorkspace({ visit, project });
+      else chooseMarkdown({ visit, project });
+      return;
+    }
     void handleFileAction(() => openVisit(visit, project));
   }
 
@@ -552,7 +527,7 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   }
 
   const fileActions = (
-    <FileMenu busy={fileBusy} onMarkdown={chooseMarkdown} onWorkspace={chooseWorkspace}
+    <FileMenu busy={fileBusy} onMarkdown={chooseMarkdown} onWorkspace={chooseWorkspace} onShowcase={openShowcase}
       history={history} onRecent={openRecent}>
       <input ref={fileInput} type="file" accept=".md,.markdown,.txt" multiple hidden
         onChange={(event) => openMarkdown(event.currentTarget.files)} />
@@ -589,7 +564,7 @@ export default function WorkspaceStudio({ boundPath }: { boundPath?: string }) {
   return (
     <Workbench
       key={documentId ?? 'bound'}
-      viewKey={opened ? (opened.id === 0 ? 'sample' : `browser:${workspace?.name ?? ''}/${path}`) : undefined}
+      viewKey={opened ? (tab.showcase ? 'showcase' : `browser:${workspace?.name ?? ''}/${path}`) : undefined}
       viewState={opened?.view}
       staticMode={Boolean(opened)}
       store={opened?.store}

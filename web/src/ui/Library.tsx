@@ -9,6 +9,7 @@ import { folderPath, markdownFile, mediaFile } from '../store/workspace';
 import type { StudioUser } from './Login';
 import { shortcutText, useShortcut, useShortcuts } from '../shortcuts';
 import ProjectControls from './ProjectControls';
+import { showcase } from '../showcase';
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -140,6 +141,18 @@ export default function Library({
       location.hash = `#/deck/${res.deck.id}`;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '创建失败');
+      setBusy(false);
+    }
+  }
+
+  async function openShowcaseCopy() {
+    setBusy(true);
+    setError('');
+    try {
+      const { deck } = await deckApi.create(showcase.title, 'showcase');
+      location.hash = `#/deck/${deck.id}`;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '无法打开示例');
       setBusy(false);
     }
   }
@@ -319,6 +332,16 @@ export default function Library({
             </button>
           </div>
         </div>
+
+        <aside className="library-showcase" aria-label="内置示例">
+          <span className="deck-card-icon"><Sparkles size={18} aria-hidden="true" /></span>
+          <div>
+            <strong>{showcase.filename}</strong>
+            <span>官方功能全景演示</span>
+          </div>
+          <button type="button" className="button" disabled={busy} aria-label="打开 showcase.md 副本"
+            onClick={() => void openShowcaseCopy()}>打开副本</button>
+        </aside>
 
         <div className="library-search">
           <Search size={16} />

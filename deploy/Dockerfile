@@ -11,6 +11,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md THIRD_PARTY_NOTICES.md ./
 COPY src ./src
+COPY demo/showcase.md ./demo/showcase.md
 
 RUN pip install --no-cache-dir . \
  && useradd --create-home --shell /usr/sbin/nologin mdstudio \

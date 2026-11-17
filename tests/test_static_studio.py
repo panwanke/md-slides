@@ -87,7 +87,7 @@ def test_static_studio_renders_in_browser(tmp_path):
             page_errors = []
             page.on("pageerror", lambda error: page_errors.append(str(error)))
             page.add_init_script("delete window.showOpenFilePicker")
-            page.goto(f"http://127.0.0.1:{port}/studio.html")
+            page.goto(f"http://127.0.0.1:{port}/")
             page.wait_for_function(
                 "document.body.innerText.includes('就绪')",
                 timeout=180_000,
@@ -103,10 +103,16 @@ def test_static_studio_renders_in_browser(tmp_path):
             open_markdown = page.get_by_role("button", name="打开 Markdown")
             open_folder = page.get_by_role("button", name="打开工作文件夹")
             tabs = page.get_by_role("tablist", name="打开的文件和文件夹")
-            # GitHub static build: sample.md is closable and there is no "导出 .md" button.
-            assert page.get_by_role("button", name="关闭 sample.md").count() == 1
+            # The canonical showcase is open by default and can be reopened from File.
+            assert page.get_by_role("button", name="关闭 showcase.md").count() == 1
+            assert frame.get_by_role("heading", name="目录导航").count() == 1
             assert page.get_by_role("button", name="导出 .md").count() == 0
-            page.get_by_role("button", name="关闭 sample.md").click()
+            page.get_by_role("button", name="关闭 showcase.md").click()
+            page.get_by_text("还没有打开的稿件").wait_for()
+            file_menu.click()
+            page.get_by_role("button", name="打开 showcase.md").click()
+            page.get_by_role("tab", name="showcase.md").wait_for()
+            page.get_by_role("button", name="关闭 showcase.md").click()
             page.get_by_text("还没有打开的稿件").wait_for()
             file_menu.click()
             for title, open_file in (
@@ -262,7 +268,7 @@ def test_workspace_toolbar_and_custom_shortcuts(tmp_path):
                 expect(workspace_key).to_contain_text("J")
                 settings.get_by_role("button", name="完成").click()
                 page.goto(f"{url}/studio/")
-                page.get_by_role("tab", name="sample.md").click()
+                page.get_by_role("tab", name="showcase.md").click()
 
                 workspace = tmp_path / "workspace"
                 workspace.mkdir()

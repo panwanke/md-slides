@@ -139,6 +139,20 @@
 .library-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .library-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+.library-showcase {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+.library-showcase > div { display: grid; gap: 3px; flex: 1; }
+.library-showcase > div > span { color: var(--muted); font-size: 12px; }
+.library-showcase > .button { flex: none; }
+
 .library-search {
   display: flex;
   align-items: center;

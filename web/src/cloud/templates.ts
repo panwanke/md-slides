@@ -1,3 +1,5 @@
+import { showcase } from '../showcase';
+
 export interface CloudTemplate {
   content: string;
   title: string;
@@ -35,29 +37,7 @@ export const CLOUD_TEMPLATES: Record<string, CloudTemplate> = {
 总结贡献、局限与下一步。
 `,
   },
-  showcase: {
-    title: '从极简书写到交互成片',
-    content: head('从极简书写到交互成片', 'aurora') + `# Markdown 即演示稿
-
-同一套引擎，从 CLI 到浏览器一致渲染。
-
----
-
-## 双栏布局
-
-::: box 核心
-编辑与预览同步。
-:::
-
----
-
-## 分步动画
-
-::: fragment step=1 effect=fade
-第一处要点
-:::
-`,
-  },
+  showcase,
   pitch: {
     title: '新产品架构与商业提案',
     content: head('新产品架构与商业提案', 'pitch-deck-vc') + `# 解决方案
