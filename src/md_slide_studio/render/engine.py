@@ -31,6 +31,7 @@ CSS = """
 .jc-body li::marker{color:var(--accent)}
 .jc-body p{font-size:clamp(15px,1.25vw,20px);line-height:1.6;color:var(--text-2);max-width:78ch}
 .jc-body code{background:var(--bg-soft);padding:.1em .35em;border-radius:3px}
+.jc-deck mark{background:#f6b83155;color:inherit;border-radius:.12em}
 .jc-body table{border-collapse:collapse;width:100%;font-size:clamp(13px,1.1vw,18px)}
 .jc-body th,.jc-body td{border:1px solid var(--border);padding:.45em .7em;text-align:left}
 .jc-body th{background:var(--surface-2);font-weight:700}
@@ -193,7 +194,31 @@ for (const source of document.querySelectorAll('.md-diagram pre[data-pele-source
 """
 
 
-INLINE_LITERAL = re.compile(r"`([^`]+)`|" + IMAGE_MARKDOWN.pattern)
+INLINE_LITERAL = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)|" + IMAGE_MARKDOWN.pattern)
+HEX_COLOR = r"#[0-9a-fA-F]{6}"
+INLINE_STYLE_TAG = re.compile(
+    rf'&lt;span style="(?:color:({HEX_COLOR})(?:;background-color:({HEX_COLOR}))?|'
+    rf'background-color:({HEX_COLOR}))"&gt;|&lt;/span&gt;'
+)
+
+
+def render_inline_styles(escaped: str) -> str:
+    """Restore paired spans with only the supported hexadecimal colors."""
+    openings = []
+    replacements = {}
+    for tag in INLINE_STYLE_TAG.finditer(escaped):
+        if tag.group(0) != "&lt;/span&gt;":
+            openings.append(tag)
+        elif openings:
+            opening = openings.pop()
+            color, combined_highlight, highlight = opening.groups()
+            highlight = combined_highlight or highlight
+            style = f"color:{color or '#252d33'}"
+            if highlight:
+                style += f";background-color:{highlight}"
+            replacements[opening.start()] = f'<span style="{style}">'
+            replacements[tag.start()] = "</span>"
+    return INLINE_STYLE_TAG.sub(lambda tag: replacements.get(tag.start(), tag.group(0)), escaped)
 
 
 def inline(s: str) -> str:
@@ -208,8 +233,10 @@ def inline(s: str) -> str:
     s = re.sub(r"(\$\$[\s\S]+?\$\$|(?<!\\)\$(?!\s)[^$\n]+?(?<!\s)(?<!\\)\$)", save_math, s)
 
     def save_literal(match: re.Match) -> str:
-        code, alt, angle_src, bare_src, title = match.groups()
+        _, code, alt, angle_src, bare_src, title = match.groups()
         if code is not None:
+            if code.startswith(" ") and code.endswith(" ") and code.strip():
+                code = code[1:-1]
             literal_tokens.append(f"<code>{html.escape(code, quote=False)}</code>")
         else:
             literal_tokens.append('<img src="%s" alt="%s" title="%s" class="jc-inline">' % (
@@ -220,7 +247,11 @@ def inline(s: str) -> str:
         return f"\x00LITERAL_{len(literal_tokens)-1}\x00"
 
     s = html.escape(INLINE_LITERAL.sub(save_literal, s), quote=False)
-    s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
+    s = render_inline_styles(s)
+    s = re.sub(r"(?<![=\\])==(?![=\s])(.+?)(?<![\s=])==(?![=])", r"<mark>\1</mark>", s)
+    s = re.sub(r"(?<!~)~~(?![~\s])(.+?)(?<![\s~])~~(?!~)", r"<del>\1</del>", s)
+    s = re.sub(r"(?<!\*)\*\*\*(?![\s*])(.+?)(?<![\s*])\*\*\*(?!\*)", r"<strong><em>\1</em></strong>", s)
+    s = re.sub(r"\*\*(?![\s*])(.+?)(?<!\s)\*\*(?!\*)", r"<strong>\1</strong>", s)
     s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", s)
 
     def render_link(match):

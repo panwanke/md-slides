@@ -14,6 +14,8 @@ export const layouts = [
   ['end', '结语'],
 ] as const;
 
+export const layoutLabels = new Map<string, string>(layouts);
+
 export const transitions = [
   ['', '默认'],
   ['fade', '淡入'],

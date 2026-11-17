@@ -1,9 +1,13 @@
+import { isolateHistory } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { ChangeSet, Compartment, EditorState } from '@codemirror/state';
 import type { ChangeDesc } from '@codemirror/state';
-import { EditorView, lineNumbers } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { Strikethrough } from '@lezer/markdown';
 import { minimalSetup } from 'codemirror';
 import { imageSource, livePreview } from './livePreview';
+import { applyMarkdownFormat, markdownFormatKeys, presentationSyntax } from './markdownFormatting';
+import type { FormatAction, MenuPosition } from './markdownFormatting';
 import { mathSyntax } from './mathSyntax';
 import { blockArgument, getAttribute, scanSlideSyntax, slideDirective, updateDirective } from './slideSyntax';
 import type { BlockKind } from './slideSyntax';
@@ -54,6 +58,7 @@ interface Callbacks {
   onSave: (deck: Deck) => void;
   onStatus: (status: SaveStatus) => void;
   onLoadError?: (message: string) => void;
+  onFormatMenu?: (position: MenuPosition) => void;
   onCursor: (
     page: number, line: number, column: number, layout: string, selection: EditorSelection, followPreview: boolean,
   ) => void;
@@ -73,10 +78,14 @@ export interface PreviewClick {
 }
 
 function normalizeDeck(deck: Deck, content: string): Deck {
-  if (!/[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(content)) return deck;
-  // The API uses Unicode code points, while CodeMirror uses UTF-16 offsets.
+  if (!/\r\n|[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(content)) return deck;
+  // The API counts code points in the original text. CodeMirror counts UTF-16 units and normalizes newlines.
   const positions = [0];
-  for (const char of content) positions.push(positions[positions.length - 1] + char.length);
+  let afterCR = false;
+  for (const char of content) {
+    positions.push(positions[positions.length - 1] + (afterCR && char === '\n' ? 0 : char.length));
+    afterCR = char === '\r';
+  }
   const span = ([from, to]: Span): Span => [positions[from], positions[to]];
   return {
     ...deck,
@@ -110,9 +119,9 @@ export class EditorSession {
     try {
       const loaded = await this.store.load();
       if (this.destroyed) return;
-      const content = loaded.content;
+      const content = loaded.content.replace(/\r\n?/g, '\n');
       this.assetBase = loaded.assetBase;
-      const deck = normalizeDeck(loaded.ast, content);
+      const deck = normalizeDeck(loaded.ast, loaded.content);
       this.snapshot = { deck, content, changes: ChangeSet.empty(content.length).desc };
       this.view = new EditorView({
         parent: this.host,
@@ -120,7 +129,21 @@ export class EditorSession {
           doc: content,
           extensions: [
             minimalSetup,
-            markdown({ extensions: [mathSyntax] }),
+            markdown({ extensions: [mathSyntax, Strikethrough, presentationSyntax] }),
+            markdownFormatKeys,
+            keymap.of([
+              { key: 'Shift-F10', run: (view) => this.openFormatMenu(view) },
+              { key: 'ContextMenu', run: (view) => this.openFormatMenu(view) },
+            ]),
+            EditorView.domEventHandlers({
+              contextmenu: (event, view) => {
+                const target = event.target;
+                if (event.shiftKey || !(target instanceof Element) || !view.contentDOM.contains(target)
+                    || target.closest('input, select, textarea, button')) return false;
+                const { clientX: x, clientY: y } = event;
+                return this.openFormatMenu(view, x || y ? { x, y } : undefined);
+              },
+            }),
             EditorView.lineWrapping,
             EditorView.contentAttributes.of({ 'aria-label': 'Markdown 编辑器', spellcheck: 'false' }),
             this.mode.of(livePreview),
@@ -139,7 +162,7 @@ export class EditorSession {
           ],
         }),
       });
-      const restored = this.callbacks.onLoad({ ...loaded, ast: deck });
+      const restored = this.callbacks.onLoad({ ...loaded, content, ast: deck });
       if (restored?.mode === 'source') this.setMode('source');
       if (restored?.selection) {
         const clamp = (pos: number) => Math.max(0, Math.min(content.length, pos));
@@ -187,6 +210,32 @@ export class EditorSession {
     return this.view?.state.doc.toString();
   }
 
+  focus() {
+    this.view?.focus();
+  }
+
+  format(action: FormatAction) {
+    if (!this.view) return;
+    applyMarkdownFormat(this.view, action);
+    this.view.focus();
+  }
+
+  private openFormatMenu(view: EditorView, position?: MenuPosition) {
+    if (!this.callbacks.onFormatMenu) return false;
+    const { main } = view.state.selection;
+    if (position) {
+      const pos = view.posAtCoords(position);
+      if (pos !== null && (pos < main.from || pos > main.to)) {
+        view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' });
+      }
+    } else {
+      const box = view.coordsAtPos(main.head) ?? view.contentDOM.getBoundingClientRect();
+      position = { x: box.left, y: box.bottom };
+    }
+    this.callbacks.onFormatMenu(position);
+    return true;
+  }
+
   async flush(): Promise<boolean> {
     while (this.view && this.snapshot && (this.saving || this.documentText() !== this.snapshot.content)) {
       if (!(await this.save())) return false;
@@ -202,6 +251,7 @@ export class EditorSession {
     if (!view || !snapshot) return true;
     const content = view.state.doc.toString();
     if (content === snapshot.content) {
+      snapshot.changes = ChangeSet.empty(content.length).desc;
       this.callbacks.onStatus('saved');
       return true;
     }
@@ -287,6 +337,56 @@ export class EditorSession {
       selection: { anchor },
       effects: scroll ? EditorView.scrollIntoView(start, { y: 'start', yMargin: 28 }) : [],
     });
+  }
+
+  async moveSlide(expected: Deck, source: number, destination: number): Promise<boolean> {
+    const { view, snapshot } = this;
+    if (!view || snapshot?.deck !== expected || source === destination
+        || !expected.slides[source - 1] || !expected.slides[destination - 1]) return false;
+
+    const { doc } = view.state;
+    if (doc.toString() !== snapshot.content || this.saving) {
+      // Resolve pending structural edits before using positions from the outline.
+      const ranges = expected.slides.map((slide) => this.mapRange(slide.sourceRange));
+      if (!(await this.flush()) || this.destroyed || view.state.doc !== doc) return false;
+      const savedSlides = this.snapshot!.deck.slides;
+      if (savedSlides.length !== ranges.length || savedSlides.some(({ sourceRange: [from, to] }, index) =>
+        from !== ranges[index][0] || to !== ranges[index][1])) return false;
+    }
+
+    const first = Math.min(source, destination);
+    const last = Math.max(source, destination);
+    const ranges = this.snapshot!.deck.slides.slice(first - 1, last).map(({ sourceRange: [from, to] }) => {
+      // Keep the newline after the workspace marker and before each separator in place.
+      if (from > 0 && doc.lineAt(from).from !== from && doc.sliceString(from, from + 1) === '\n') from++;
+      if (doc.sliceString(to - 1, to) === '\n') to--;
+      return { from, to };
+    });
+    const pages = ranges.map(({ from, to }) => doc.sliceString(from, to));
+    const [moved] = pages.splice(source - first, 1);
+    pages.splice(destination - first, 0, moved);
+
+    const from = ranges[0].from;
+    let insert = '';
+    let anchor = from;
+    for (const [index, page] of pages.entries()) {
+      if (index > 0) insert += doc.sliceString(ranges[index - 1].to, ranges[index].from);
+      if (index === destination - first) anchor = from + insert.length;
+      insert += page;
+    }
+    if (from === 0 && insert.startsWith('---')) {
+      // A page starting with dashes must not be mistaken for the deck's frontmatter.
+      insert = '\n' + insert;
+      anchor++;
+    }
+    view.dispatch({
+      changes: { from, to: ranges[ranges.length - 1].to, insert },
+      selection: { anchor },
+      effects: EditorView.scrollIntoView(anchor, { y: 'start', yMargin: 28 }),
+      annotations: isolateHistory.of('full'),
+      userEvent: 'move.slide',
+    });
+    return true;
   }
 
   /** Locate an image reference by its authored path and reveal it in the source. */

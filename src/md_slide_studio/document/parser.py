@@ -6,7 +6,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 SLIDES_START_RE = re.compile(
-    r"^[ \t]*<!--[ \t]*(?:slides:start|slides|@slides)[ \t]*-->[ \t]*$", re.M
+    r"^[ \t]*<!--[ \t]*(?:slides:start|slides|@slides)[ \t]*-->[ \t]*\r?$", re.M
 )
 META_RE = re.compile(r"^<!--\s*slide:\s*(.*?)\s*-->", re.I | re.M)
 IMAGE_MARKDOWN = re.compile(

@@ -92,6 +92,97 @@ def test_workbench_and_sections_e2e(workbench):
         assert not errors
 
 
+def test_outline_drag_reorders_complete_slides_and_can_undo(workbench):
+    url, deck = workbench
+    preamble = '---\ntitle: "Outline 🎬"\n---\n\nWorkspace draft\n<!-- slides:start -->\n'
+    opening = '<!-- slide: layout=section | id=opening -->\n# Opening\n\n'
+    methods = '\n# Methods\n\n```text\n---\n```\n\n::: notes\nKeep this note\n---\n:::\n\n'
+    closing = '<!-- slide: layout=section | id=closing -->\n# Closing'
+    original = preamble + opening + '---\n' + methods + '------\n' + closing
+    deck.write_text(original, encoding='utf-8')
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={'width': 1440, 'height': 900})
+        page.route('https://**/*', lambda route: route.abort())
+        page.goto(url)
+        slide_rows = page.locator('.slide-item')
+        expect(slide_rows).to_have_count(3)
+        slide_rows.nth(2).drag_to(slide_rows.first, target_position={'x': 60, 'y': 4})
+
+        expect(page.locator('.slide-title')).to_have_text(['Closing', 'Opening', 'Methods'])
+        expect(slide_rows.first).to_have_attribute('aria-current', 'page')
+        frame = page.frame_locator('#previewFrame')
+        expect(frame.locator('.slide.is-active')).to_have_attribute('data-title', 'Closing')
+        expect(page.locator('#saveStatus')).to_have_text('已保存')
+        assert deck.read_text(encoding='utf-8') == (
+            preamble + closing + '\n---\n' + opening + '------\n' + methods[:-1]
+        )
+
+        page.locator('#editor .cm-content').press('Control+z')
+        expect(page.locator('.slide-title')).to_have_text(['Opening', 'Methods', 'Closing'])
+        expect(page.locator('#saveStatus')).to_have_text('已保存')
+        assert deck.read_text(encoding='utf-8') == original
+
+        slide_rows.first.press('Alt+ArrowDown')
+        expect(page.locator('.slide-title')).to_have_text(['Methods', 'Opening', 'Closing'])
+        expect(slide_rows.nth(1)).to_be_focused()
+
+
+def test_editor_shortcuts_and_context_menu_share_markdown_formatting(workbench):
+    url, deck = workbench
+    deck.write_text('# Formatting example\n\nSignal\n', encoding='utf-8')
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={'width': 1440, 'height': 900})
+        page.route('https://**/*', lambda route: route.abort())
+        page.goto(url)
+        page.get_by_role('button', name='Markdown 源码').click()
+        editor = page.locator('#editor .cm-content')
+        editor.get_by_text('Signal', exact=True).dblclick()
+        page.keyboard.press('Control+b')
+        expect(editor).to_contain_text('**Signal**')
+        page.keyboard.press('Control+i')
+        expect(editor).to_contain_text('***Signal***')
+
+        selection = page.evaluate('getSelection().getRangeAt(0).getBoundingClientRect().toJSON()')
+        page.mouse.click(selection['x'] + selection['width'] / 2, selection['y'] + 4, button='right')
+        menu = page.get_by_role('menu', name='Markdown 格式')
+        menu.get_by_role('menuitem', name='高亮').click()
+        expect(editor).to_contain_text('***==Signal==***')
+        expect(editor).to_be_focused()
+
+        page.keyboard.press('Shift+F10')
+        menu.get_by_role('menuitem', name='字体颜色：红色').click()
+        expect(page.locator('#saveStatus')).to_have_text('已保存')
+        frame = page.frame_locator('#previewFrame')
+        styled = frame.locator('strong em mark span')
+        expect(styled).to_have_text('Signal')
+        expect(styled).to_have_css('color', 'rgb(179, 62, 56)')
+        assert '<span style="color:#b33e38">Signal</span>' in deck.read_text(encoding='utf-8')
+
+        with page.expect_download() as downloaded:
+            page.get_by_role('button', name='导出 HTML').click()
+        assert '<mark><span style="color:#b33e38">Signal</span></mark>' in downloaded.value.path().read_text(encoding='utf-8')
+
+        page.get_by_role('button', name='实时编辑').click()
+        editor.locator('.md-heading-1').click(position={'x': 30, 'y': 10})
+        expect(editor.locator('.md-highlight')).to_have_text('Signal')
+        expect(editor.get_by_text('Signal', exact=True)).to_have_css('color', 'rgb(179, 62, 56)')
+
+        page.get_by_role('button', name='Markdown 源码').click()
+        styled.click()
+        page.keyboard.press('Shift+F10')
+        menu.get_by_role('menuitem', name='清除字体颜色').click()
+        expect(editor).to_contain_text('***==Signal==***')
+        page.keyboard.press('Shift+F10')
+        expect(menu).to_be_visible()
+        page.keyboard.press('Escape')
+        expect(menu).to_be_hidden()
+        expect(editor).to_be_focused()
+
+
 def test_local_workbench_opens_workspace_and_exports_offline(workbench, tmp_path):
     url, original = workbench
     folder = tmp_path / "workspace"

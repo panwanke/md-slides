@@ -5,6 +5,7 @@ import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view
 import type { ViewUpdate } from '@codemirror/view';
 import katex from 'katex';
 import '../../src/md_slide_studio/providers/assets/katex/katex.inline.css';
+import { colorOpening } from './markdownFormatting';
 import {
   blockArgument, blockNames, effects, getAttribute, layouts, scanSlideSyntax,
   setAttribute, slideDirective, transitions, updateBlockArgument, updateDirective,
@@ -441,7 +442,7 @@ const richDecorations = StateField.define({
 
 const markClasses: Record<string, string> = {
   Emphasis: 'md-emphasis', StrongEmphasis: 'md-strong', InlineCode: 'md-code',
-  Strikethrough: 'md-strike', Link: 'md-link',
+  Strikethrough: 'md-strike', Link: 'md-link', InlineHighlight: 'md-highlight',
 };
 
 function markdownDecorations(view: EditorView) {
@@ -471,6 +472,9 @@ function markdownDecorations(view: EditorView) {
           decorations.push(Decoration.line({ class: `md-heading md-heading-${heading[2]}` }).range(firstLine.from));
         } else if (markClasses[name] && start < end) {
           decorations.push(Decoration.mark({ class: markClasses[name] }).range(start, end));
+        } else if (name === 'InlineColor' && node.firstChild) {
+          const color = colorOpening.exec(state.doc.sliceString(start, node.firstChild.to))?.[1];
+          if (color) decorations.push(Decoration.mark({ attributes: { style: 'color:' + color } }).range(start, end));
         }
         if (name === 'Image' && active) return false;
         if (active) return;
@@ -499,7 +503,7 @@ function markdownDecorations(view: EditorView) {
         } else if (name === 'HeaderMark') {
           const whitespace = /^[ \t]*/.exec(state.doc.sliceString(end, state.doc.lineAt(end).to))?.[0].length ?? 0;
           decorations.push(hide.range(start, end + whitespace));
-        } else if (['EmphasisMark', 'CodeMark', 'StrikethroughMark'].includes(name)
+        } else if (['EmphasisMark', 'CodeMark', 'StrikethroughMark', 'InlineHighlightMark', 'InlineColorMark'].includes(name)
                    && node.parent?.name !== 'FencedCode') {
           decorations.push(hide.range(start, end));
         } else if (name === 'Link' && !state.doc.sliceString(start, end).startsWith('<')) {

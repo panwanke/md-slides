@@ -7,8 +7,9 @@ import {
   StickyNote, Trash2, Upload, X,
 } from 'lucide-react';
 import { EditorSession } from './editorSession';
-import type { Deck, EditorSelection, Mode, PreviewClick, SaveStatus, SlideSummary } from './editorSession';
-import { layouts } from './slideSyntax';
+import type { Deck, EditorSelection, Mode, PreviewClick, SaveStatus } from './editorSession';
+import type { MenuPosition } from './markdownFormatting';
+import { layoutLabels, layouts } from './slideSyntax';
 import { LocalFileStore } from './store/localFile';
 import { deckApi } from './store/remote';
 import type { DeckAsset } from './store/remote';
@@ -19,6 +20,8 @@ import type { Pane, WorkbenchView } from './store/workbenchView';
 import { shortcutText, useShortcut, useShortcuts } from './shortcuts';
 import ProjectControls from './ui/ProjectControls';
 import type { AccountSettingsProps } from './ui/ProjectControls';
+import { MarkdownContextMenu } from './ui/MarkdownContextMenu';
+import { SlideOutline, slideTitle } from './ui/SlideOutline';
 import { downloadText } from './render/download';
 import { mergeMissingPaths, scanBrokenImages } from './render/missingImages';
 import { exportServerDeck } from './render/serverEngine';
@@ -91,13 +94,7 @@ const statusLabels: Record<SaveStatus, string> = {
   conflict: '版本冲突，请刷新页面',
 };
 
-const layoutLabels = new Map<string, string>(layouts);
 const pageNumber = (page: number) => String(page).padStart(2, '0');
-
-function slideTitle(slide: SlideSummary, deck: Deck) {
-  if (slide.layout === 'cover') return deck.frontmatter.md_slide?.title || deck.frontmatter.jc?.title || deck.frontmatter.title || slide.title;
-  return slide.title === `Slide ${slide.index}` ? '未命名幻灯片' : slide.title;
-}
 
 function player(frame: HTMLIFrameElement | null) {
   return (frame?.contentWindow as (Window & { JCDeck?: DeckPlayer }) | null)?.JCDeck;
@@ -258,6 +255,7 @@ export default function App({
   });
   const [mode, setMode] = useState<Mode>('live');
   const [insertMenu, setInsertMenu] = useState(false);
+  const [formatMenu, setFormatMenu] = useState<MenuPosition>();
   const [closed, setClosed] = useState<Set<string>>(() => new Set());
   const [pane, setPane] = useState<Pane>('editor');
   const [split, setSplit] = useState(readSplit);
@@ -354,6 +352,7 @@ export default function App({
     const editor = new EditorSession(host.current!, {
       onLoad(doc) {
         setLoadError('');
+        setFormatMenu(undefined);
         slideCount.current = doc.ast.slides.length;
         const previous = viewState?.current ?? readWorkbenchView(viewKey ?? doc.fullPath);
         updatePreviewPage(previous?.page ?? 1);
@@ -368,6 +367,11 @@ export default function App({
         setFile(doc);
         setDeck(doc.ast);
         showRevision(doc.ast.documentRevision);
+        // Seed the client-side preview once after the initial load. Building the
+        // EditorState with the loaded doc does NOT emit a change event, so cloud
+        // mode (which renders from onDocChange) would stay blank until the user
+        // typed something. onDocChange is only provided by cloud mode.
+        onDocChange?.(doc.content);
         return previous;
       },
       onSave(next) {
@@ -377,6 +381,7 @@ export default function App({
         showRevision(next.documentRevision);
       },
       onStatus: setStatus,
+      onFormatMenu: setFormatMenu,
       onLoadError(message) {
         setLoadError(message);
       },
@@ -576,6 +581,13 @@ export default function App({
     navigatePreview(page);
     session.current?.selectSlide(page);
     if (pane === 'outline') setPane('editor');
+  }
+
+  async function reorderSlide(expected: Deck, source: number, destination: number) {
+    const editor = session.current;
+    if (!editor || !(await editor.moveSlide(expected, source, destination)) || session.current !== editor) return false;
+    updatePreviewPage(destination);
+    return editor.flush();
   }
 
   function scanPreviewImages() {
@@ -792,36 +804,13 @@ export default function App({
               </button>
             </div>
           </div>
-          <div className="outline-list" id="slideList">
-            {deck?.sections.map((section) => (
-              <div className="section-group" key={section.id}>
-                <button type="button" className="section-header" aria-expanded={!closed.has(section.id)}
-                  aria-controls={`section-${section.id}`}
-                  onClick={() => setClosed((previous) => {
-                    const next = new Set(previous);
-                    if (next.has(section.id)) next.delete(section.id);
-                    else next.add(section.id);
-                    return next;
-                  })}>
-                  {closed.has(section.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                  <span className="section-title" title={section.title}>{section.title}</span>
-                  <span className="section-count">{section.slides.length}</span>
-                </button>
-                <div className="section-slides" id={`section-${section.id}`} hidden={closed.has(section.id)}>
-                  {section.slides.map((slide) =>
-                    <button type="button" key={slide.index} className="slide-item" id={`slide-item-${slide.index}`}
-                      aria-current={activePage === slide.index ? 'page' : undefined} onClick={() => navigate(slide.index)}>
-                      <span className="slide-index">{pageNumber(slide.index)}</span>
-                      <span className="slide-label">
-                        <span className="slide-title" title={slideTitle(slide, deck)}>{slideTitle(slide, deck)}</span>
-                        <span className="slide-layout">{layoutLabels.get(slide.layout) || (slide.layout === 'normal' ? '自动版式' : slide.layout)}</span>
-                      </span>
-                    </button>)}
-                </div>
-              </div>
-            ))}
-            {deck && !total && <p className="outline-empty">使用 ＋ 新建幻灯片</p>}
-          </div>
+          <SlideOutline deck={deck} activePage={activePage} closed={closed} onSelect={navigate} onMove={reorderSlide}
+            onToggle={(id) => setClosed((previous) => {
+              const next = new Set(previous);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            })} />
           <footer className="outline-footer"><span id="slideCount">{total}</span> 页
             <span className="middle-dot" /> <span id="sectionCount">{deck?.sections.length ?? 0}</span> 节</footer>
         </aside>
@@ -865,6 +854,13 @@ export default function App({
             </div>
           </div>
           <div className="editor-host studio-editor" id="editor" data-mode={mode} ref={host} />
+          {formatMenu && <MarkdownContextMenu position={formatMenu} onClose={(restoreFocus) => {
+            setFormatMenu(undefined);
+            if (restoreFocus) session.current?.focus();
+          }} onFormat={(action) => {
+            setFormatMenu(undefined);
+            session.current?.format(action);
+          }} />}
           {!file && (
             <div className="editor-empty">
               <FileText size={25} />
