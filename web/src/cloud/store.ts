@@ -207,7 +207,9 @@ export class CloudDeckStore implements DeckStore {
       source: `${deck.title}.md`,
       fullPath: `cloud://decks/${this.deckId}`,
       content,
-      assetBase: storage.userPath(uid, `decks/${this.deckId}/images/`),
+      // userPath() validates a relative OBJECT path and rejects a trailing slash;
+      // re-append it so assetBase still works as a URL base for relative images.
+      assetBase: `${storage.userPath(uid, `decks/${this.deckId}/images`)}/`,
       revision: this.revision,
       ast: await buildAst(content),
     };
@@ -328,7 +330,8 @@ export const cloudDeckApi = {
 
   async listAssets(deckId: number): Promise<{ ok: boolean; assets: DeckAsset[] }> {
     const uid = await ownerId();
-    const prefix = storage.userPath(uid, `decks/${deckId}/images/`);
+    // userPath() rejects a trailing slash; re-append it for an exact directory prefix.
+    const prefix = `${storage.userPath(uid, `decks/${deckId}/images`)}/`;
     const result = await storage.list(prefix, { limit: 200 });
     if (result.error) throw new Error(result.error.message || '读取附件失败');
     const entries = (Array.isArray(result.data) ? result.data : []) as {
