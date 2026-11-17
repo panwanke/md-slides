@@ -4,6 +4,11 @@ All notable changes to `jc-slide-studio` will be documented in this file.
 
 ## [Unreleased]
 
+- 新增 Markdown 行内文字格式化体系与浮层上下文菜单：支持加粗（`**`）、斜体（`*`）、删除线（`~~`）、多重反引号行内代码（`` ` ``）、高亮（`==`）与六色文字（`<span style="color:#hex">`）；集成基于 `@codemirror/language` 语法树保护，严格跳过代码块、LaTeX 公式与指令；支持选区右击与 `Shift+F10` 唤出无障碍格式菜单、快捷键即时触发及橡皮擦清除颜色；渲染引擎与导出 HTML 同步呈现。
+- 新增大纲幻灯片拖拽与键盘重排能力：抽离独立 `SlideOutline` 组件，支持拖拽悬停边界指示器（`before`/`after`）与 `Alt+↑` / `Alt+↓` 键盘无障碍排序；`editorSession.ts` 内 `moveSlide` 采用 `isolateHistory.of('full')` 实现原子重排与单步撤销，并自动保护换行与 Frontmatter 边界。
+- 解耦官方 Showcase 范例为单一事实源：以 `demo/showcase.md` 为唯一标准，通过 `web/src/showcase.ts`、Wheel 打包策略及 Dockerfile 同步分发；Python 核心引擎、静态试用站与幻灯片库统一开箱即用，支持一键打开与创建副本。
+- 完善平台兼容性与云存储路径治理：修复 `SLIDES_START_RE` 正则与 `editorSession.ts` 对 Windows CRLF 换行的支持；修复云端文稿存储路径未追加末尾斜杠导致相对附件无法解析的问题；补齐静态工作台无文件句柄历史项重新选择被互斥锁阻断的问题。
+
 - 登记 WorkBuddy 云服务集成调查结果：新增[调查报告](logic/report/2026-11-16-workbuddy-cloud-service-integration-report.md)与[云服务接入 Runbook](docs/ops/integrate-workbuddy-cloud-runbook.md)，决策 D006，ARA 路由/ops 已登记。复用 `wbapp_Y8YYMDc6ZZ7Nz6ksDsXHuG` 激活云服务，建 `decks` / `deck_revisions` + owner RLS，前端新增 `web/src/cloud/` 适配层；两类构建通过，**按用户要求暂不发布**（发布前仍有 Pyodide 运行时与 base 路径阻塞点）。
 - 移除腾讯云托管链路：删除 `deploy/cloudrun/` CloudBase Run 部署副本（含 `cloudbaserc.json`）、`cloudbase/migrations/` 建表迁移、`studio/pg_client.py` 与 `studio/service_pg.py` 两个 PG 后端实现，清理 `JC_STUDIO_BACKEND=cloudbase_pg` 分支与 `docs/ops/` 自建部署物料；服务端存储收敛为 SQLite，线上托管统一由 WorkBuddy 承载。
 
